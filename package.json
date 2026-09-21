@@ -1,0 +1,35 @@
+{
+  "name": "ai-content-factory",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lokale AI Content Factory - Content-Erstellung, lokale Video-KI, Publishing auf Social Media",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/worker-core",
+    "packages/publisher-core",
+    "backend",
+    "frontend",
+    "workers/script",
+    "workers/ffmpeg",
+    "workers/publishers/youtube",
+    "workers/publishers/tiktok",
+    "workers/publishers/instagram",
+    "workers/publishers/facebook"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "dev:backend": "npm run dev --workspace @acf/backend",
+    "dev:frontend": "npm run dev --workspace @acf/frontend",
+    "secrets": "node scripts/generate-secrets.mjs",
+    "preflight": "node scripts/preflight.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3"
+  }
+}

@@ -1,0 +1,66 @@
+ARG WORKSPACE
+ARG WORKSPACE_PATH
+ARG INSTALL_FFMPEG=false
+
+FROM node:22-bookworm-slim AS deps
+ARG WORKSPACE
+WORKDIR /repo
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY packages/worker-core/package.json packages/worker-core/
+COPY packages/publisher-core/package.json packages/publisher-core/
+COPY backend/package.json backend/
+COPY frontend/package.json frontend/
+COPY workers/script/package.json workers/script/
+COPY workers/ffmpeg/package.json workers/ffmpeg/
+COPY workers/publishers/youtube/package.json workers/publishers/youtube/
+COPY workers/publishers/tiktok/package.json workers/publishers/tiktok/
+COPY workers/publishers/instagram/package.json workers/publishers/instagram/
+COPY workers/publishers/facebook/package.json workers/publishers/facebook/
+RUN npm ci --workspace @acf/worker-core --workspace @acf/publisher-core --workspace "${WORKSPACE}" --include-workspace-root
+
+FROM deps AS build
+ARG WORKSPACE
+ARG WORKSPACE_PATH
+COPY packages packages
+COPY workers workers
+RUN npm run build --workspace @acf/worker-core \
+ && npm run build --workspace @acf/publisher-core \
+ && npm run build --workspace "${WORKSPACE}" \
+ && npm prune --omit=dev --workspace @acf/worker-core --workspace @acf/publisher-core --workspace "${WORKSPACE}" --include-workspace-root
+
+FROM node:22-bookworm-slim AS runtime
+ARG WORKSPACE_PATH
+ARG INSTALL_FFMPEG
+ENV NODE_ENV=production \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    HEALTH_PORT=9000 \
+    WORKER_DIR=${WORKSPACE_PATH}
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini ca-certificates curl \
+ && if [ "$INSTALL_FFMPEG" = "true" ]; then \
+      apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core fontconfig \
+      && fc-cache -f; \
+    fi \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /repo
+COPY --from=build /repo/node_modules ./node_modules
+COPY --from=build /repo/package.json ./package.json
+COPY --from=build /repo/packages/worker-core/dist ./packages/worker-core/dist
+COPY --from=build /repo/packages/worker-core/package.json ./packages/worker-core/package.json
+COPY --from=build /repo/packages/publisher-core/dist ./packages/publisher-core/dist
+COPY --from=build /repo/packages/publisher-core/package.json ./packages/publisher-core/package.json
+COPY --from=build /repo/${WORKSPACE_PATH}/dist ./worker/dist
+COPY --from=build /repo/${WORKSPACE_PATH}/package.json ./worker/package.json
+
+RUN mkdir -p /data && chown -R node:node /data /repo
+
+USER node
+EXPOSE 9000
+
+HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=5 \
+  CMD curl -fsS http://127.0.0.1:9000/health || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "/repo/worker/dist/index.js"]

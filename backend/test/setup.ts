@@ -1,0 +1,8 @@
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL ??= 'postgresql://test:test@localhost:5432/test';
+process.env.REDIS_URL ??= 'redis://localhost:6379';
+process.env.JWT_SECRET ??= 'a'.repeat(64);
+process.env.ENCRYPTION_KEY ??= '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+process.env.INTERNAL_API_KEY ??= 'test-internal-api-key-1234567890';
+process.env.ADMIN_PASSWORD ??= 'TestPasswort123!';
+process.env.LOG_LEVEL ??= 'error';

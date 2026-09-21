@@ -1,0 +1,52 @@
+ARG BASE_IMAGE=python:3.11-slim-bookworm
+
+FROM ${BASE_IMAGE} AS runtime
+ARG WORKER_DIR
+ARG INSTALL_FFMPEG=true
+ARG INSTALL_TORCH=false
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HEALTH_PORT=9000 \
+    PYTHONPATH=/app:/shared
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini ca-certificates curl \
+ && if [ "$INSTALL_FFMPEG" = "true" ]; then \
+      apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core fontconfig && fc-cache -f; \
+    fi \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN if ! command -v python3 >/dev/null 2>&1; then \
+      apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+WORKDIR /app
+
+COPY workers/_shared/requirements.txt /shared/requirements.txt
+COPY ${WORKER_DIR}/requirements.txt /app/requirements.txt
+
+RUN python3 -m pip install --upgrade pip \
+ && if [ "$INSTALL_TORCH" = "true" ]; then \
+      python3 -m pip install --index-url "${TORCH_INDEX_URL}" torch torchvision; \
+    fi \
+ && python3 -m pip install -r /app/requirements.txt
+
+COPY workers/_shared/acfworker /shared/acfworker
+COPY ${WORKER_DIR}/app /app/app
+
+RUN groupadd --gid 1000 worker 2>/dev/null || true \
+ && useradd --uid 1000 --gid 1000 --create-home worker 2>/dev/null || true \
+ && mkdir -p /data /models \
+ && chown -R 1000:1000 /data /models /app
+
+USER 1000
+EXPOSE 9000
+
+HEALTHCHECK --interval=20s --timeout=5s --start-period=90s --retries=5 \
+  CMD curl -fsS http://127.0.0.1:9000/health || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python3", "-m", "app.main"]

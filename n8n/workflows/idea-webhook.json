@@ -1,0 +1,142 @@
+{
+  "name": "AI Content Factory - Idee per Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "acf-idee",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-360, 0],
+      "webhookId": "b1000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ACF_BACKEND_URL }}/api/automation/ideas",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ACF_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ projectId: $json.body.projectId, title: $json.body.title, topic: $json.body.topic || $json.body.title, description: $json.body.description || '', tags: $json.body.tags || [], score: $json.body.score || 50, source: 'webhook' }) }}",
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000002",
+      "name": "Idee speichern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-120, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-generate",
+              "leftValue": "={{ $('Webhook').item.json.body.generateNow }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000003",
+      "name": "Sofort generieren?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [120, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ACF_BACKEND_URL }}/api/automation/videos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ACF_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ projectId: $('Webhook').item.json.body.projectId, ideaId: $('Idee speichern').item.json.id, title: $('Webhook').item.json.body.title, topic: $('Webhook').item.json.body.topic || $('Webhook').item.json.body.title, description: $('Webhook').item.json.body.description || '', startNow: true }) }}",
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000004",
+      "name": "Video generieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, -100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-status",
+              "name": "status",
+              "value": "idee_gespeichert",
+              "type": "string"
+            },
+            {
+              "id": "assign-id",
+              "name": "ideaId",
+              "value": "={{ $('Idee speichern').item.json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000005",
+      "name": "Nur gespeichert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [380, 100]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Idee speichern", "type": "main", "index": 0 }]]
+    },
+    "Idee speichern": {
+      "main": [[{ "node": "Sofort generieren?", "type": "main", "index": 0 }]]
+    },
+    "Sofort generieren?": {
+      "main": [
+        [{ "node": "Video generieren", "type": "main", "index": 0 }],
+        [{ "node": "Nur gespeichert", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

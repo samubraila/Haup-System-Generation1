@@ -1,0 +1,609 @@
+name: ai-content-factory
+
+x-common: &common
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+x-worker-env: &worker-env
+  NODE_ENV: production
+  REDIS_URL: ${REDIS_URL}
+  BACKEND_URL: http://backend:4000
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+  DATA_DIR: /data
+  STORAGE_MODE: volume
+  HEALTH_PORT: 9000
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-3}
+  TZ: ${TZ:-Europe/Berlin}
+
+x-python-worker-env: &python-worker-env
+  REDIS_URL: ${REDIS_URL}
+  BACKEND_URL: http://backend:4000
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+  DATA_DIR: /data
+  MODELS_DIR: /models
+  STORAGE_MODE: volume
+  HEALTH_PORT: 9000
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-3}
+  TZ: ${TZ:-Europe/Berlin}
+  HF_HOME: /models/.cache
+
+services:
+  storage:
+    <<: *common
+    container_name: content-storage
+    build:
+      context: .
+      dockerfile: storage/Dockerfile
+    network_mode: "none"
+    environment:
+      DATA_DIR: /data
+      BACKUP_DIR: /backups
+      OWNER_UID: "1000"
+      OWNER_GID: "1000"
+      TEMP_MAX_AGE_HOURS: "24"
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data
+      - ${BACKUP_HOST_PATH:-./backups}:/backups
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+    tmpfs:
+      - /tmp:size=16m
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+  postgres:
+    <<: *common
+    container_name: content-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1536M
+
+  redis:
+    <<: *common
+    container_name: content-redis
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - redis-data:/data
+    networks:
+      - queue
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  backend:
+    <<: *common
+    container_name: content-backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      BACKEND_PORT: 4000
+      DATA_DIR: /data
+      BACKUP_DIR: /backups
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data
+      - ${BACKUP_HOST_PATH:-./backups}:/backups
+    networks:
+      - edge
+      - data
+      - queue
+      - automation
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      storage:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+
+  frontend:
+    <<: *common
+    container_name: content-frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-3000}:8080"
+    networks:
+      - edge
+    depends_on:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+      - /var/cache/nginx:size=32m
+      - /var/run:size=8m
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 192M
+
+  n8n:
+    <<: *common
+    container_name: content-n8n
+    image: n8nio/n8n:1.70.1
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:${N8N_PORT:-5678}/
+      GENERIC_TIMEZONE: ${TZ:-Europe/Berlin}
+      TZ: ${TZ:-Europe/Berlin}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+      ACF_BACKEND_URL: http://backend:4000
+      ACF_API_KEY: ${INTERNAL_API_KEY}
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    networks:
+      - automation
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 768M
+
+  script-worker:
+    <<: *common
+    container_name: content-script-worker
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.node
+      args:
+        WORKSPACE: "@acf/worker-script"
+        WORKSPACE_PATH: workers/script
+    environment:
+      <<: *worker-env
+      WORKER_NAME: script-worker
+      CONCURRENCY: "2"
+      JOB_TIMEOUT_MS: "600000"
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data
+    networks:
+      - queue
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  ffmpeg-worker:
+    <<: *common
+    container_name: content-ffmpeg-worker
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.node
+      args:
+        WORKSPACE: "@acf/worker-ffmpeg"
+        WORKSPACE_PATH: workers/ffmpeg
+        INSTALL_FFMPEG: "true"
+    environment:
+      <<: *worker-env
+      WORKER_NAME: ffmpeg-worker
+      CONCURRENCY: ${MEDIA_CONCURRENCY:-2}
+      JOB_TIMEOUT_MS: "5400000"
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data
+    networks:
+      - queue
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 3072M
+
+  video-worker:
+    <<: *common
+    container_name: content-video-worker
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.python
+      args:
+        WORKER_DIR: workers/video
+        INSTALL_FFMPEG: "true"
+        INSTALL_TORCH: "false"
+    environment:
+      <<: *python-worker-env
+      WORKER_NAME: video-worker
+      CONCURRENCY: ${GENERATION_CONCURRENCY:-1}
+      JOB_TIMEOUT_MS: ${VIDEO_GENERATOR_TIMEOUT_MS:-3600000}
+      VIDEO_GENERATOR_PROVIDER: ${VIDEO_GENERATOR_PROVIDER:-placeholder}
+      GPU_MODE: ${GPU_MODE:-auto}
+      GPU_MIN_VRAM_MB: ${GPU_MIN_VRAM_MB:-8000}
+      GPU_RECHECK_INTERVAL_MS: ${GPU_RECHECK_INTERVAL_MS:-60000}
+      LTX_MODEL_PATH: ${LTX_MODEL_PATH:-/models/ltx-video}
+      WAN_MODEL_PATH: ${WAN_MODEL_PATH:-/models/wan}
+      COMFYUI_URL: ${COMFYUI_URL:-http://host.docker.internal:8188}
+      COMFYUI_WORKFLOW: ${COMFYUI_WORKFLOW:-default_t2v.json}
+      COMFYUI_WORKFLOW_DIR: /app/workflows
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data
+      - models:/models
+      - ./workers/video/workflows:/app/workflows:ro
+    networks:
+      - queue
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8192M
+
+  subtitle-worker:
+    <<: *common
+    container_name: content-subtitle-worker
+    profiles: ["ai"]
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.python
+      args:
+        WORKER_DIR: workers/subtitle
+        INSTALL_FFMPEG: "true"
+        INSTALL_TORCH: "false"
+    environment:
+      <<: *python-worker-env
+      WORKER_NAME: subtitle-worker
+      CONCURRENCY: "1"
+      JOB_TIMEOUT_MS: "3600000"
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-auto}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data
+      - models:/models
+    networks:
+      - queue
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4096M
+
+  voice-worker:
+    <<: *common
+    container_name: content-voice-worker
+    profiles: ["ai"]
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.python
+      args:
+        WORKER_DIR: workers/voice
+        INSTALL_FFMPEG: "true"
+        INSTALL_TORCH: "false"
+    environment:
+      <<: *python-worker-env
+      WORKER_NAME: voice-worker
+      CONCURRENCY: "1"
+      JOB_TIMEOUT_MS: "1800000"
+      TTS_PROVIDER: ${TTS_PROVIDER:-none}
+      PIPER_MODEL_PATH: ${PIPER_MODEL_PATH:-/models/piper/model.onnx}
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data
+      - models:/models
+    networks:
+      - queue
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+
+  image-worker:
+    <<: *common
+    container_name: content-image-worker
+    profiles: ["ai"]
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.python
+      args:
+        WORKER_DIR: workers/image
+        INSTALL_FFMPEG: "false"
+        INSTALL_TORCH: "false"
+    environment:
+      <<: *python-worker-env
+      WORKER_NAME: image-worker
+      CONCURRENCY: "1"
+      JOB_TIMEOUT_MS: "1800000"
+      GPU_MODE: ${GPU_MODE:-auto}
+      GPU_MIN_VRAM_MB: ${GPU_MIN_VRAM_MB:-8000}
+      IMAGE_MODEL_PATH: ${IMAGE_MODEL_PATH:-/models/sdxl}
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data
+      - models:/models
+    networks:
+      - queue
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8192M
+
+  publisher-youtube:
+    <<: *common
+    container_name: content-publisher-youtube
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.node
+      args:
+        WORKSPACE: "@acf/publisher-youtube"
+        WORKSPACE_PATH: workers/publishers/youtube
+    environment:
+      <<: *worker-env
+      WORKER_NAME: publisher-youtube
+      CONCURRENCY: ${PUBLISH_CONCURRENCY:-1}
+      JOB_TIMEOUT_MS: "7200000"
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data:ro
+    networks:
+      - queue
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  publisher-tiktok:
+    <<: *common
+    container_name: content-publisher-tiktok
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.node
+      args:
+        WORKSPACE: "@acf/publisher-tiktok"
+        WORKSPACE_PATH: workers/publishers/tiktok
+    environment:
+      <<: *worker-env
+      WORKER_NAME: publisher-tiktok
+      CONCURRENCY: ${PUBLISH_CONCURRENCY:-1}
+      JOB_TIMEOUT_MS: "7200000"
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data:ro
+    networks:
+      - queue
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  publisher-instagram:
+    <<: *common
+    container_name: content-publisher-instagram
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.node
+      args:
+        WORKSPACE: "@acf/publisher-instagram"
+        WORKSPACE_PATH: workers/publishers/instagram
+    environment:
+      <<: *worker-env
+      WORKER_NAME: publisher-instagram
+      CONCURRENCY: ${PUBLISH_CONCURRENCY:-1}
+      JOB_TIMEOUT_MS: "7200000"
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data:ro
+    networks:
+      - queue
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp:size=1024m
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+
+  publisher-facebook:
+    <<: *common
+    container_name: content-publisher-facebook
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.node
+      args:
+        WORKSPACE: "@acf/publisher-facebook"
+        WORKSPACE_PATH: workers/publishers/facebook
+    environment:
+      <<: *worker-env
+      WORKER_NAME: publisher-facebook
+      CONCURRENCY: ${PUBLISH_CONCURRENCY:-1}
+      JOB_TIMEOUT_MS: "7200000"
+    volumes:
+      - ${STORAGE_HOST_PATH:-./data}:/data:ro
+    networks:
+      - queue
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+networks:
+  edge:
+    name: acf-edge
+  data:
+    name: acf-data
+    internal: true
+  queue:
+    name: acf-queue
+  automation:
+    name: acf-automation
+
+volumes:
+  models:
+    name: acf-models
+  postgres-data:
+    name: acf-postgres
+  redis-data:
+    name: acf-redis
+  n8n-data:
+    name: acf-n8n

@@ -1,0 +1,11 @@
+name: ai-content-factory
+
+services:
+  subtitle-worker:
+    profiles: []
+
+  voice-worker:
+    profiles: []
+
+  image-worker:
+    profiles: []

@@ -1,0 +1,5 @@
+-r /shared/requirements.txt
+diffusers==0.31.0
+transformers==4.46.2
+accelerate==1.1.1
+safetensors==0.4.5

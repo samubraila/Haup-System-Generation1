@@ -1,0 +1,48 @@
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+data/secrets/
+
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- Build output ---
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# --- Runtime data (media, DB, logs) ---
+data/
+!data/.gitkeep
+backups/
+*.log
+logs/
+
+# --- AI model weights ---
+models/
+*.safetensors
+*.ckpt
+*.gguf
+*.bin
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Test / coverage ---
+coverage/
+.nyc_output/

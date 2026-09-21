@@ -1,0 +1,71 @@
+name: acf-remote-worker
+
+services:
+  video-worker:
+    container_name: content-video-worker-remote
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: workers/Dockerfile.python
+      args:
+        WORKER_DIR: workers/video
+        INSTALL_FFMPEG: "true"
+        INSTALL_TORCH: "true"
+        BASE_IMAGE: nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu121
+    environment:
+      WORKER_NAME: video-worker
+      WORKER_ID: ${WORKER_ID:-video-worker-gpu-pc}
+      REDIS_URL: ${REDIS_URL}
+      BACKEND_URL: ${BACKEND_URL}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      STORAGE_MODE: ${STORAGE_MODE:-api}
+      DATA_DIR: ${DATA_DIR:-/data}
+      MODELS_DIR: /models
+      HEALTH_PORT: 9000
+      CONCURRENCY: ${GENERATION_CONCURRENCY:-1}
+      JOB_TIMEOUT_MS: ${VIDEO_GENERATOR_TIMEOUT_MS:-3600000}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-3}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      VIDEO_GENERATOR_PROVIDER: ${VIDEO_GENERATOR_PROVIDER:-ltx}
+      GPU_MODE: ${GPU_MODE:-auto}
+      GPU_MIN_VRAM_MB: ${GPU_MIN_VRAM_MB:-8000}
+      GPU_RECHECK_INTERVAL_MS: ${GPU_RECHECK_INTERVAL_MS:-60000}
+      LTX_MODEL_PATH: ${LTX_MODEL_PATH:-/models/ltx-video}
+      WAN_MODEL_PATH: ${WAN_MODEL_PATH:-/models/wan}
+      COMFYUI_URL: ${COMFYUI_URL:-http://host.docker.internal:8188}
+      COMFYUI_WORKFLOW_DIR: /app/workflows
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+      HF_HOME: /models/.cache
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - models:/models
+      - ./workers/video/workflows:/app/workflows:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9000:9000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "8.0"
+          memory: 24576M
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  models:
+    name: acf-models-remote

@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    background-image:
+      radial-gradient(900px 500px at 15% -10%, rgba(99, 102, 241, 0.12), transparent 60%),
+      radial-gradient(700px 400px at 95% 0%, rgba(168, 85, 247, 0.1), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand-500/70 ring-offset-2 ring-offset-canvas;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-edge-strong;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-faint;
+  }
+
+  input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  input[type='date']::-webkit-calendar-picker-indicator {
+    filter: invert(0.7);
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-edge bg-surface shadow-card;
+  }
+
+  .card-hover {
+    @apply transition-all duration-200 hover:border-edge-strong hover:bg-surface-raised;
+  }
+
+  .panel-title {
+    @apply text-sm font-semibold uppercase tracking-wider text-ink-faint;
+  }
+
+  .metric-value {
+    @apply text-3xl font-semibold tabular-nums tracking-tight;
+  }
+
+  .input-base {
+    @apply w-full rounded-xl border border-edge bg-canvas/60 px-3.5 py-2.5 text-sm text-ink
+           placeholder:text-ink-faint transition-colors
+           focus:border-brand-500/60 focus:bg-canvas disabled:opacity-50;
+  }
+
+  .skeleton {
+    @apply rounded-lg bg-gradient-to-r from-surface-raised via-surface-hover to-surface-raised bg-[length:200%_100%] animate-shimmer;
+  }
+
+  .scroll-thin {
+    scrollbar-width: thin;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-brand-gradient bg-clip-text text-transparent;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

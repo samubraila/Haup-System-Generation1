@@ -1,0 +1,28 @@
+{
+  "name": "@acf/publisher-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gemeinsame Logik aller Publisher-Worker (Upload-Ablauf, Token-Erneuerung, Fehlerklassen)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "dependencies": {
+    "@acf/worker-core": "1.0.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  }
+}

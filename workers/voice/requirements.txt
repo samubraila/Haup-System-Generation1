@@ -1,0 +1,2 @@
+-r /shared/requirements.txt
+piper-tts==1.2.0
