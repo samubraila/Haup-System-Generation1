@@ -2,10 +2,16 @@
 
 Die Videogenerierung läuft ausschließlich auf deiner Hardware. Es wird keine
 kostenpflichtige Cloud-API angesprochen. Der Adapter wird **pro Projekt**
-gewählt (Projekte → Bearbeiten → *Video-KI Adapter*).
+gewählt (Projekte → Bearbeiten → *Videoquelle*).
+
+Dieses Dokument beschreibt die GPU-Adapter. Wer ohne Grafikkarte echtes
+Bewegtbild will, nimmt `stock` oder `slideshow`:
+[STOCK_FOOTAGE.md](STOCK_FOOTAGE.md).
 
 | Adapter | GPU nötig | VRAM | Erzeugt KI-Video |
 |---|---|---|---|
+| `stock` | nein | — | nein, echtes Stock-Filmmaterial |
+| `slideshow` | nein | — | nein, eigene Bilder mit Kamerafahrt |
 | `placeholder` | nein | — | **nein**, technischer Testclip |
 | `comfyui` | auf dem Host | je nach Workflow | ja |
 | `ltx` | ja | ab 12 GB | ja |

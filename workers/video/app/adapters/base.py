@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 
@@ -20,6 +20,12 @@ class GenerationRequest:
     scene_index: int
     scene_count: int
     output_path: str
+    keywords: list[str] = field(default_factory=list)
+    motion: str = "kenburns"
+    motion_strength: float = 0.35
+    image_paths: list[str] = field(default_factory=list)
+    stock_orientation: str = ""
+
 
 
 class AdapterUnavailable(RuntimeError):
@@ -30,6 +36,7 @@ class VideoAdapter(Protocol):
     name: str
     requires_gpu: bool
     produces_ai_video: bool
+    last_attribution: dict[str, Any] | None
 
     def prepare(self, config: Any, logger: logging.Logger) -> dict[str, Any]: ...
 

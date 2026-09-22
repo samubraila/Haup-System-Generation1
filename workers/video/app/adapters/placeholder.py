@@ -24,6 +24,9 @@ class PlaceholderAdapter:
     requires_gpu = False
     produces_ai_video = False
 
+    def __init__(self) -> None:
+        self.last_attribution: dict[str, Any] | None = None
+
     def prepare(self, config: Any, logger: logging.Logger) -> dict[str, Any]:
         logger.warning(
             "Platzhalter-Adapter aktiv: es wird KEIN KI-Video erzeugt, sondern nur ein technischer Testclip"
@@ -31,7 +34,9 @@ class PlaceholderAdapter:
         return {
             "adapter": self.name,
             "producesAiVideo": False,
-            "note": "Technischer Testclip zum Pruefen der Pipeline. Fuer echte KI-Videos VIDEO_GENERATOR_PROVIDER auf ltx, wan oder comfyui setzen.",
+            "ready": True,
+            "mode": "test",
+            "note": "Technischer Testclip zum Pruefen der Pipeline. Fuer echtes Material VIDEO_GENERATOR_PROVIDER auf stock, slideshow, ltx, wan oder comfyui setzen.",
         }
 
     def generate(

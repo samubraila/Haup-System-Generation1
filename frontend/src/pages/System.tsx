@@ -40,6 +40,13 @@ const STATE_LABEL: Record<ServiceState['state'], string> = {
   unknown: 'Unbekannt',
 };
 
+function adapterState(info: Record<string, unknown>): { tone: 'success' | 'warn' | 'idle'; label: string } {
+  const ready = info.ready === true || info.modelPresent === true || info.reachable === true;
+  if (!ready) return { tone: 'warn', label: 'Nicht eingerichtet' };
+  if (info.mode === 'test') return { tone: 'idle', label: 'Testmodus' };
+  return { tone: 'success', label: 'Bereit' };
+}
+
 export function ServicesPage() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['services'],
@@ -281,20 +288,8 @@ export function GpuPage() {
                           <div key={name} className="rounded-xl border border-edge bg-surface-raised p-3">
                             <div className="flex items-center justify-between">
                               <p className="text-sm font-medium text-ink">{name}</p>
-                              <Badge
-                                tone={toneClasses(
-                                  info.modelPresent === true || info.reachable === true
-                                    ? 'success'
-                                    : info.producesAiVideo === false
-                                      ? 'idle'
-                                      : 'warn',
-                                )}
-                              >
-                                {info.modelPresent === true || info.reachable === true
-                                  ? 'Bereit'
-                                  : info.producesAiVideo === false
-                                    ? 'Testmodus'
-                                    : 'Nicht eingerichtet'}
+                              <Badge tone={toneClasses(adapterState(info).tone)}>
+                                {adapterState(info).label}
                               </Badge>
                             </div>
                             {info.note ? <p className="mt-1.5 text-xs text-ink-muted">{String(info.note)}</p> : null}

@@ -1,12 +1,19 @@
 import { z } from 'zod';
-import { subtitleStyleSchema } from '@acf/worker-core';
+import { colorGradeSchema, motionSchema, subtitleStyleSchema, transitionSchema, videoProviderSchema } from '@acf/worker-core';
 
 export const projectSettingsSchema = z.object({
   scriptProvider: z.enum(['template', 'ollama']).default('template'),
   ollamaUrl: z.string().default('http://host.docker.internal:11434'),
   ollamaModel: z.string().default('llama3.1:8b'),
-  videoProvider: z.enum(['ltx', 'wan', 'comfyui', 'placeholder']).default('placeholder'),
+  videoProvider: videoProviderSchema.default('placeholder'),
   sceneCount: z.number().int().min(1).max(20).default(4),
+  motion: motionSchema.default('kenburns'),
+  motionStrength: z.number().min(0).max(1).default(0.35),
+  transition: transitionSchema.default('fade'),
+  transitionDurationSec: z.number().min(0).max(2).default(0.4),
+  colorGrade: colorGradeSchema.default('cinematic'),
+  vignette: z.boolean().default(true),
+  titleCardDurationSec: z.number().min(0).max(6).default(0),
   voiceEnabled: z.boolean().default(false),
   voiceName: z.string().default('default'),
   voiceSpeed: z.number().min(0.5).max(2).default(1),

@@ -17,6 +17,7 @@ class DiffusersVideoAdapter:
     frame_limit = 257
 
     def __init__(self) -> None:
+        self.last_attribution: dict[str, Any] | None = None
         self._pipeline: Any = None
         self._model_path: str = ""
         self._dtype: Any = None
@@ -45,6 +46,7 @@ class DiffusersVideoAdapter:
         return {
             "adapter": self.name,
             "producesAiVideo": True,
+            "ready": model_present,
             "modelPath": self._model_path,
             "modelPresent": model_present,
             "note": None

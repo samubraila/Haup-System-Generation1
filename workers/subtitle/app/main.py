@@ -7,6 +7,7 @@ from typing import Any
 
 from acfworker import JobContext, PermanentJobError, detect_gpu, run_worker
 
+from .ass import Word, render_ass
 from .srt import build_cues, render_srt, render_vtt
 
 QUEUE = "subtitle"
@@ -125,14 +126,20 @@ def handle(ctx: JobContext) -> dict[str, Any]:
             beam_size=5,
             vad_filter=True,
             initial_prompt=initial_prompt,
-            word_timestamps=False,
+            word_timestamps=True,
         )
 
         total_duration = max(0.1, float(getattr(info, "duration", 0.0) or 0.0))
         segments: list[tuple[float, float, str]] = []
+        words: list[Word] = []
 
         for segment in segments_iterator:
             segments.append((float(segment.start), float(segment.end), str(segment.text)))
+            for word in getattr(segment, "words", None) or []:
+                text = str(getattr(word, "word", "") or "").strip()
+                if not text:
+                    continue
+                words.append(Word(start=float(word.start), end=float(word.end), text=text))
             ctx.report_progress(
                 25 + min(60.0, (float(segment.end) / total_duration) * 60.0),
                 "Transkription laeuft",
@@ -159,6 +166,35 @@ def handle(ctx: JobContext) -> dict[str, Any]:
             "text/vtt",
         )
 
+        ass_content = render_ass(
+            cues,
+            words,
+            dict(style),
+            int(data.get("videoWidth") or 1080),
+            int(data.get("videoHeight") or 1920),
+        )
+        ass_name = f"{video_id}.ass"
+        ass_path = ctx.storage.project_path(project_id, "subtitles", ass_name)
+        ctx.storage.write_text(ass_path, ass_content, "text/x-ssa")
+
+        ctx.api.register_media(
+            {
+                "projectId": project_id,
+                "videoId": video_id,
+                "kind": "subtitle",
+                "path": ass_path,
+                "fileName": ass_name,
+                "mimeType": "text/x-ssa",
+                "sizeBytes": len(ass_content.encode("utf-8")),
+                "meta": {
+                    "stage": "subtitle",
+                    "format": "ass",
+                    "animation": style.get("animation") or "none",
+                    "words": len(words),
+                },
+            }
+        )
+
         ctx.report_progress(95, "Untertitel werden gespeichert")
 
         media = ctx.api.register_media(
@@ -174,8 +210,10 @@ def handle(ctx: JobContext) -> dict[str, Any]:
                     "stage": "subtitle",
                     "language": language,
                     "cues": len(cues),
+                    "words": len(words),
                     "model": _state["model_size"],
                     "device": _state["device"],
+                    "format": "srt",
                 },
             }
         )
@@ -185,7 +223,9 @@ def handle(ctx: JobContext) -> dict[str, Any]:
         return {
             "mediaId": media.get("id"),
             "path": srt_path,
+            "assPath": ass_path,
             "cues": len(cues),
+            "words": len(words),
             "language": language,
             "transcript": transcript[:4000],
         }

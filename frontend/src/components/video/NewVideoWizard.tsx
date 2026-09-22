@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Field, Input, Modal, Select, Textarea, Toggle } from '@/components/ui';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiError } from '@/lib/api';
-import { cn, FORMAT_LABEL, LANGUAGE_LABEL } from '@/lib/format';
+import { cn, FORMAT_LABEL, LANGUAGE_LABEL, PROVIDER_LABEL } from '@/lib/format';
 import type { Idea, Project, Video } from '@/lib/types';
 
 const STEPS = ['Thema', 'Format', 'Laenge', 'Stil', 'Sprache', 'Generieren'] as const;
@@ -416,7 +416,7 @@ export function NewVideoWizard({
                     ['Laenge', `${state.durationSec} Sekunden`],
                     ['Stil', state.style],
                     ['Sprache', LANGUAGE_LABEL[state.language] ?? state.language],
-                    ['Video-KI', activeProject?.settings.videoProvider ?? '-'],
+                    ['Videoquelle', PROVIDER_LABEL[activeProject?.settings.videoProvider ?? ''] ?? '-'],
                   ].map(([label, value]) => (
                     <div key={label} className="flex justify-between gap-3 border-b border-edge/60 py-1.5 last:border-0">
                       <dt className="text-ink-faint">{label}</dt>
@@ -428,8 +428,9 @@ export function NewVideoWizard({
 
               {activeProject?.settings.videoProvider === 'placeholder' ? (
                 <div className="rounded-xl border border-state-warn/30 bg-state-warn/10 p-4 text-sm text-state-warn">
-                  Dieses Projekt nutzt den Platzhalter-Adapter. Es entsteht ein technischer Testclip, kein KI-Video.
-                  Stelle den Adapter in den Projekteinstellungen auf LTX, Wan oder ComfyUI um.
+                  Dieses Projekt nutzt den Platzhalter-Adapter. Es entsteht ein technischer Testclip, kein echtes Video.
+                  Stelle die Videoquelle in den Projekteinstellungen auf Stock-Material, eigene Bilder oder einen
+                  GPU-Adapter um.
                 </div>
               ) : null}
 

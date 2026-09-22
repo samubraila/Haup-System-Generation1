@@ -30,6 +30,7 @@ class ComfyUiAdapter:
     produces_ai_video = True
 
     def __init__(self) -> None:
+        self.last_attribution: dict[str, Any] | None = None
         self.base_url = ""
         self.workflow_path = ""
         self.poll_interval = 3.0
@@ -60,6 +61,7 @@ class ComfyUiAdapter:
         return {
             "adapter": self.name,
             "producesAiVideo": True,
+            "ready": reachable and workflow_present,
             "comfyUrl": self.base_url,
             "reachable": reachable,
             "workflow": self.workflow_path,

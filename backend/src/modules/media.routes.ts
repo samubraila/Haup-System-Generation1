@@ -43,6 +43,14 @@ const BUCKET_BY_KIND: Record<string, string> = {
   other: 'exports',
 };
 
+function kindFromMime(mime: string): string {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('audio/')) return 'audio';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime === 'application/x-subrip' || mime === 'text/vtt') return 'subtitle';
+  return 'other';
+}
+
 function toApi(row: MediaRow) {
   return {
     id: row.id,
@@ -166,7 +174,7 @@ mediaRouter.post(
     if (!file) throw new BadRequestError('Es wurde keine Datei uebermittelt');
 
     const projectId = String(req.body.projectId ?? '');
-    const kind = String(req.body.kind ?? 'other');
+    const kind = req.body.kind ? String(req.body.kind) : kindFromMime(file.mimetype);
     const videoId = req.body.videoId ? String(req.body.videoId) : null;
 
     if (!BUCKET_BY_KIND[kind]) throw new BadRequestError(`Unbekannte Kategorie: ${kind}`);

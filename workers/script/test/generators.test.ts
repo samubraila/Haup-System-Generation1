@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTemplateScript, countWords, estimateDuration } from '../src/generators.js';
+import { buildTemplateScript, countWords, estimateDuration, extractKeywords } from '../src/generators.js';
 
 const request = {
   title: 'Schwarze Loecher',
@@ -44,6 +44,31 @@ describe('Vorlagen-Skript', () => {
   it('nummeriert die Szenen ab null', () => {
     const draft = buildTemplateScript(request);
     expect(draft.scenes.map((scene) => scene.index)).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe('Stichwoerter', () => {
+  it('liefert Suchbegriffe fuer jede Szene', () => {
+    for (const scene of buildTemplateScript(request).scenes) {
+      expect(scene.keywords.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('laesst Fuellwoerter weg', () => {
+    const keywords = extractKeywords('die Sterne und der Weltraum mit vielen Galaxien');
+    expect(keywords).not.toContain('die');
+    expect(keywords).not.toContain('und');
+    expect(keywords.length).toBeGreaterThan(0);
+  });
+
+  it('entfernt Doppelungen und begrenzt die Anzahl', () => {
+    const keywords = extractKeywords('Sterne Sterne Sterne Planeten Galaxien Nebel', 3);
+    expect(keywords).toHaveLength(3);
+    expect(new Set(keywords.map((k) => k.toLowerCase())).size).toBe(3);
+  });
+
+  it('kommt mit Umlauten zurecht', () => {
+    expect(extractKeywords('Größe Höhe Länge')).toContain('Größe');
   });
 });
 

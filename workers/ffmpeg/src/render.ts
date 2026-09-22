@@ -1,24 +1,134 @@
 import path from 'node:path';
-import type { RenderTarget, SubtitleStyle } from '@acf/worker-core';
-import { buildForceStyle, escapeFilterPath, overlayPosition, probe, run, type MediaInfo } from './ffmpeg.js';
+import type { ColorGrade, RenderTarget, SubtitleStyle, Transition } from '@acf/worker-core';
+import {
+  buildForceStyle,
+  escapeDrawText,
+  escapeFilterPath,
+  overlayPosition,
+  probe,
+  run,
+  type MediaInfo,
+} from './ffmpeg.js';
 
 export interface RenderInputs {
   workDir: string;
   clipPaths: string[];
+  clipDurations: number[];
   audioPath: string | null;
   musicPath: string | null;
   musicVolume: number;
   subtitleFileName: string | null;
+  subtitleIsAss: boolean;
   subtitleStyle: SubtitleStyle;
   burnSubtitles: boolean;
   watermarkPath: string | null;
   watermarkPosition: string;
   watermarkOpacity: number;
+  transition: Transition;
+  transitionDurationSec: number;
+  colorGrade: ColorGrade;
+  vignette: boolean;
+  titleCard: string;
+  titleCardDurationSec: number;
 }
 
 export interface RenderOutcome {
   outputPath: string;
   info: MediaInfo;
+}
+
+const XFADE_NAME: Record<Transition, string> = {
+  none: 'fade',
+  fade: 'fade',
+  dissolve: 'dissolve',
+  slideleft: 'slideleft',
+  wipeleft: 'wipeleft',
+  circleopen: 'circleopen',
+};
+
+const GRADE_FILTER: Record<ColorGrade, string> = {
+  none: '',
+  cinematic: 'eq=contrast=1.08:saturation=0.97:gamma=1.02,colorbalance=rs=-0.02:bs=0.04',
+  warm: 'eq=contrast=1.04:saturation=1.08,colorbalance=rs=0.06:gs=0.02:bs=-0.05',
+  cool: 'eq=contrast=1.04:saturation=1.02,colorbalance=rs=-0.05:bs=0.07',
+  vivid: 'eq=contrast=1.12:saturation=1.35:gamma=1.01',
+  muted: 'eq=contrast=0.96:saturation=0.72:gamma=1.03',
+};
+
+export function effectiveTransitionSec(inputs: RenderInputs): number {
+  if (inputs.transition === 'none' || inputs.clipPaths.length < 2) return 0;
+  const usable = inputs.clipDurations.filter((value) => value > 0);
+  if (usable.length !== inputs.clipPaths.length) return 0;
+  const shortest = Math.min(...usable);
+  return Math.max(0, Math.min(inputs.transitionDurationSec, shortest / 2 - 0.05));
+}
+
+export function buildVideoChain(inputs: RenderInputs, target: RenderTarget): { filters: string[]; label: string } {
+  const filters: string[] = [];
+
+  const scaled = inputs.clipPaths.map((_, index) => {
+    const label = `v${index}`;
+    filters.push(
+      `[${index}:v]scale=${target.width}:${target.height}:force_original_aspect_ratio=increase,` +
+        `crop=${target.width}:${target.height},fps=${target.fps},setsar=1,format=yuv420p[${label}]`,
+    );
+    return label;
+  });
+
+  let label: string;
+  const transitionSec = effectiveTransitionSec(inputs);
+
+  if (scaled.length === 1) {
+    label = scaled[0]!;
+  } else if (transitionSec <= 0) {
+    filters.push(`${scaled.map((name) => `[${name}]`).join('')}concat=n=${scaled.length}:v=1:a=0[vcat]`);
+    label = 'vcat';
+  } else {
+    let previous = scaled[0]!;
+    let elapsed = inputs.clipDurations[0] ?? 0;
+
+    for (let index = 1; index < scaled.length; index++) {
+      const next = scaled[index]!;
+      const out = index === scaled.length - 1 ? 'vcat' : `vx${index}`;
+      const offset = Math.max(0, elapsed - transitionSec);
+      filters.push(
+        `[${previous}][${next}]xfade=transition=${XFADE_NAME[inputs.transition]}:` +
+          `duration=${transitionSec.toFixed(3)}:offset=${offset.toFixed(3)}[${out}]`,
+      );
+      elapsed = offset + (inputs.clipDurations[index] ?? 0);
+      previous = out;
+    }
+    label = previous;
+  }
+
+  const polish = [GRADE_FILTER[inputs.colorGrade], inputs.vignette ? 'vignette=PI/5' : '']
+    .filter(Boolean)
+    .join(',');
+  if (polish) {
+    filters.push(`[${label}]${polish}[vgrade]`);
+    label = 'vgrade';
+  }
+
+  return { filters, label };
+}
+
+export function buildTitleCardFilter(
+  input: string,
+  text: string,
+  holdSec: number,
+  height: number,
+): { filter: string; label: string } {
+  const fade = Math.min(0.5, holdSec / 3);
+  const fontSize = Math.round(height * 0.055);
+  const filter =
+    `[${input}]drawtext=text='${escapeDrawText(text)}':` +
+    `fontcolor=white:fontsize=${fontSize}:line_spacing=${Math.round(fontSize * 0.3)}:` +
+    `box=1:boxcolor=black@0.45:boxborderw=${Math.round(fontSize * 0.5)}:` +
+    `x=(w-text_w)/2:y=(h-text_h)/2:` +
+    `alpha='if(lt(t,${fade.toFixed(2)}),t/${fade.toFixed(2)},` +
+    `if(lt(t,${(holdSec - fade).toFixed(2)}),1,max(0,(${holdSec.toFixed(2)}-t)/${fade.toFixed(2)})))':` +
+    `enable='lt(t,${holdSec.toFixed(2)})'[vtitle]`;
+  return { filter, label: 'vtitle' };
 }
 
 export async function renderTarget(
@@ -57,40 +167,34 @@ export async function renderTarget(
     inputIndex += 1;
   }
 
-  const filters: string[] = [];
-
-  const scaled = inputs.clipPaths.map((_, index) => {
-    const label = `v${index}`;
-    filters.push(
-      `[${index}:v]scale=${target.width}:${target.height}:force_original_aspect_ratio=increase,` +
-        `crop=${target.width}:${target.height},fps=${target.fps},setsar=1,format=yuv420p[${label}]`,
-    );
-    return `[${label}]`;
-  });
-
-  let videoLabel = '[vcat]';
-  if (scaled.length === 1) {
-    videoLabel = scaled[0]!;
-  } else {
-    filters.push(`${scaled.join('')}concat=n=${scaled.length}:v=1:a=0[vcat]`);
-  }
+  const chain = buildVideoChain(inputs, target);
+  const filters = chain.filters;
+  let videoLabel = chain.label;
 
   if (inputs.watermarkPath && watermarkIndex >= 0) {
     filters.push(
       `[${watermarkIndex}:v]format=rgba,colorchannelmixer=aa=${inputs.watermarkOpacity.toFixed(2)},` +
         `scale=${Math.round(target.width * 0.16)}:-1[wm]`,
     );
-    filters.push(`${videoLabel}[wm]overlay=${overlayPosition(inputs.watermarkPosition)}[vwm]`);
-    videoLabel = '[vwm]';
+    filters.push(`[${videoLabel}][wm]overlay=${overlayPosition(inputs.watermarkPosition)}[vwm]`);
+    videoLabel = 'vwm';
   }
 
   if (inputs.burnSubtitles && inputs.subtitleFileName) {
-    const scaleFactor = target.height / 1920;
-    const forceStyle = buildForceStyle(inputs.subtitleStyle, scaleFactor);
-    filters.push(
-      `${videoLabel}subtitles=${escapeFilterPath(inputs.subtitleFileName)}:force_style='${forceStyle}'[vsub]`,
-    );
-    videoLabel = '[vsub]';
+    const subtitleFilter = inputs.subtitleIsAss
+      ? `subtitles=${escapeFilterPath(inputs.subtitleFileName)}`
+      : `subtitles=${escapeFilterPath(inputs.subtitleFileName)}:force_style='${buildForceStyle(
+          inputs.subtitleStyle,
+          target.height / 1920,
+        )}'`;
+    filters.push(`[${videoLabel}]${subtitleFilter}[vsub]`);
+    videoLabel = 'vsub';
+  }
+
+  if (inputs.titleCard.trim() && inputs.titleCardDurationSec > 0) {
+    const card = buildTitleCardFilter(videoLabel, inputs.titleCard, inputs.titleCardDurationSec, target.height);
+    filters.push(card.filter);
+    videoLabel = card.label;
   }
 
   let audioLabel: string;
@@ -109,7 +213,7 @@ export async function renderTarget(
   }
 
   args.push('-filter_complex', filters.join(';'));
-  args.push('-map', videoLabel, '-map', audioLabel);
+  args.push('-map', `[${videoLabel}]`, '-map', audioLabel);
 
   args.push(
     '-c:v', 'libx264',

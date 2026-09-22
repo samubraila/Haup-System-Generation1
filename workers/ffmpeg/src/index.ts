@@ -62,20 +62,36 @@ await runWorker({
       const watermarkPath = job.watermarkPath ? await optional('Das Wasserzeichen', job.watermarkPath) : null;
 
       let subtitleFileName: string | null = null;
-      if (job.subtitlePath && job.burnSubtitles) {
+      let subtitleIsAss = false;
+
+      if (job.burnSubtitles && job.subtitleAssPath) {
+        const pulled = await required('Die animierte Untertiteldatei', job.subtitleAssPath);
+        subtitleFileName = 'subtitles.ass';
+        subtitleIsAss = true;
+        await fs.copyFile(pulled, path.join(workDir, subtitleFileName));
+      } else if (job.burnSubtitles && job.subtitlePath) {
         const pulled = await required('Die Untertiteldatei', job.subtitlePath);
         subtitleFileName = 'subtitles.srt';
         await fs.copyFile(pulled, path.join(workDir, subtitleFileName));
       }
 
+      const clipDurations: number[] = [];
       let totalSourceSec = 0;
       for (const clip of clipPaths) {
         const info = await probe(clip, ctx.signal);
+        clipDurations.push(info.durationSec);
         totalSourceSec += info.durationSec;
       }
 
       ctx.logger.info(
-        { clips: clipPaths.length, totalSourceSec, targets: job.targets.map((t) => t.key) },
+        {
+          clips: clipPaths.length,
+          totalSourceSec,
+          targets: job.targets.map((t) => t.key),
+          transition: job.transition,
+          colorGrade: job.colorGrade,
+          animatedSubtitles: subtitleIsAss,
+        },
         'Rendern beginnt',
       );
 
@@ -93,15 +109,23 @@ await runWorker({
           {
             workDir,
             clipPaths,
+            clipDurations,
             audioPath,
             musicPath,
             musicVolume: job.musicVolume,
             subtitleFileName,
+            subtitleIsAss,
             subtitleStyle: job.subtitleStyle,
             burnSubtitles: job.burnSubtitles,
             watermarkPath,
             watermarkPosition: job.watermarkPosition,
             watermarkOpacity: job.watermarkOpacity,
+            transition: job.transition,
+            transitionDurationSec: job.transitionDurationSec,
+            colorGrade: job.colorGrade,
+            vignette: job.vignette,
+            titleCard: job.titleCard,
+            titleCardDurationSec: job.titleCardDurationSec,
           },
           target,
           {

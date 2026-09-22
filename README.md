@@ -257,30 +257,55 @@ Details: [docs/VIDEO_MODELS.md](docs/VIDEO_MODELS.md).
 7. **Verschieben** → Im `Kalender` lassen sich geplante Beiträge per
    Drag & Drop auf einen anderen Tag ziehen.
 
-Im Auslieferungszustand steht der Video-Adapter auf `placeholder`. Dabei
-entsteht ein deutlich beschrifteter Testclip, **kein KI-Video** — so lässt sich
-die gesamte Kette prüfen, bevor Modelle geladen werden.
+Im Auslieferungszustand steht die Videoquelle auf `placeholder`. Dabei entsteht
+ein deutlich beschrifteter Testclip, **kein echtes Video** — so lässt sich die
+gesamte Kette prüfen, bevor Schlüssel eingetragen oder Modelle geladen werden.
 
 ---
 
-## Lokale Video-KI einrichten
+## Videoquelle einrichten
 
-Drei Adapter stehen bereit. Der Adapter wird pro Projekt gewählt.
+Die Quelle wird pro Projekt gewählt (Projekte → Bearbeiten → *Videoquelle*).
+Zwei der Adapter kommen ganz ohne Grafikkarte aus.
 
-| Adapter | Braucht | Eignung |
-|---|---|---|
-| `placeholder` | nichts | Test der Pipeline |
-| `comfyui` | ComfyUI auf dem Host | Volle Kontrolle über den Workflow |
-| `ltx` | GPU + LTX-Video-Modell | Schnelle Text-zu-Video-Erzeugung |
-| `wan` | GPU + Wan-Modell | Alternative Text-zu-Video-Erzeugung |
+| Adapter | Braucht | GPU | Eignung |
+|---|---|---|---|
+| `stock` | kostenlosen Pexels- oder Pixabay-Schlüssel | nein | Echtes Filmmaterial passend zur Szene |
+| `slideshow` | eigene Bilder im Projekt | nein | Eigene Aufnahmen mit Kamerafahrt |
+| `placeholder` | nichts | nein | Test der Pipeline |
+| `comfyui` | ComfyUI auf dem Host | auf dem Host | Volle Kontrolle über den Workflow |
+| `ltx` | GPU + LTX-Video-Modell | ja | Schnelle Text-zu-Video-Erzeugung |
+| `wan` | GPU + Wan-Modell | ja | Alternative Text-zu-Video-Erzeugung |
 
+Schlüssel holen, Lizenzlage und Bildersuche:
+[docs/STOCK_FOOTAGE.md](docs/STOCK_FOOTAGE.md).
 Modelle herunterladen, Speicherort, VRAM-Bedarf und ComfyUI-Anbindung:
 [docs/VIDEO_MODELS.md](docs/VIDEO_MODELS.md).
 
-**Ohne GPU** bleibt ein Generierungsjob im Status `WAITING_FOR_GPU`. Er zählt
-nicht als Fehler, verbraucht keinen Versuch und startet automatisch, sobald ein
-Video-Worker mit GPU verbunden ist — auch von einem anderen Rechner:
-[docs/REMOTE_GPU.md](docs/REMOTE_GPU.md).
+**Ohne GPU** bleibt ein Job der GPU-Adapter im Status `WAITING_FOR_GPU`. Er
+zählt nicht als Fehler, verbraucht keinen Versuch und startet automatisch,
+sobald ein Video-Worker mit GPU verbunden ist — auch von einem anderen Rechner:
+[docs/REMOTE_GPU.md](docs/REMOTE_GPU.md). `stock` und `slideshow` laufen
+dagegen direkt auf dem Laptop.
+
+---
+
+## Look und Schnitt
+
+Jedes Projekt bestimmt, wie das fertige Video aussieht. Die Einstellungen
+liegen unter Projekte → Bearbeiten → *Look und Schnitt*.
+
+| Einstellung | Wirkung |
+|---|---|
+| Kamerabewegung | Ken Burns, Zoom oder Schwenk auf Standbildmaterial |
+| Stärke der Bewegung | wie weit gezoomt bzw. geschwenkt wird |
+| Übergang | weiche Blende, Auflösen, Schieben, Wischen, Kreisblende oder harter Schnitt |
+| Übergangsdauer | Länge der Blende zwischen zwei Szenen |
+| Farblook | Kinolook, warm, kühl, kräftig, gedämpft |
+| Vignette | dunkelt die Bildränder ab |
+| Titelkarte | blendet den Titel am Anfang ein |
+| Untertitel-Animation | Wort für Wort (Pop), Karaoke, Einblenden oder statisch |
+| Farbe des aktiven Wortes | Hervorhebung bei Pop und Karaoke |
 
 ---
 

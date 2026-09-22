@@ -30,8 +30,15 @@ export interface ProjectSettings {
   scriptProvider: 'template' | 'ollama';
   ollamaUrl: string;
   ollamaModel: string;
-  videoProvider: 'ltx' | 'wan' | 'comfyui' | 'placeholder';
+  videoProvider: VideoProvider;
   sceneCount: number;
+  motion: Motion;
+  motionStrength: number;
+  transition: Transition;
+  transitionDurationSec: number;
+  colorGrade: ColorGrade;
+  vignette: boolean;
+  titleCardDurationSec: number;
   voiceEnabled: boolean;
   voiceName: string;
   voiceSpeed: number;
@@ -49,6 +56,11 @@ export interface ProjectSettings {
   defaultPrivacy: 'public' | 'unlisted' | 'private';
 }
 
+export type VideoProvider = 'stock' | 'slideshow' | 'ltx' | 'wan' | 'comfyui' | 'placeholder';
+export type Motion = 'none' | 'kenburns' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right';
+export type Transition = 'none' | 'fade' | 'slideleft' | 'wipeleft' | 'circleopen' | 'dissolve';
+export type ColorGrade = 'none' | 'cinematic' | 'warm' | 'cool' | 'vivid' | 'muted';
+
 export interface SubtitleStyle {
   font: string;
   fontSize: number;
@@ -59,7 +71,8 @@ export interface SubtitleStyle {
   marginVertical: number;
   bold: boolean;
   uppercase: boolean;
-  animation: 'none' | 'fade' | 'karaoke';
+  animation: 'none' | 'fade' | 'karaoke' | 'pop';
+  highlightColor: string;
   maxCharsPerLine: number;
 }
 

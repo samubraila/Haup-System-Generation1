@@ -17,10 +17,68 @@ import {
 } from '@/components/ui';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiError } from '@/lib/api';
-import { formatBytes, FORMAT_LABEL, LANGUAGE_LABEL } from '@/lib/format';
-import type { Platform, Project } from '@/lib/types';
+import { formatBytes, FORMAT_LABEL, LANGUAGE_LABEL, PROVIDER_LABEL } from '@/lib/format';
+import type { Platform, Project, SubtitleStyle } from '@/lib/types';
 
 const PLATFORMS: Platform[] = ['youtube', 'tiktok', 'instagram', 'facebook'];
+const PROVIDER_OPTIONS: Array<{ value: string; label: string; hint: string }> = [
+  { value: 'stock', label: 'Stock-Material (Pexels / Pixabay)', hint: 'Echtes Filmmaterial, keine GPU noetig. Braucht einen kostenlosen API-Key.' },
+  { value: 'slideshow', label: 'Eigene Bilder animieren', hint: 'Nutzt die Bilder des Projekts mit Kamerafahrt. Keine GPU noetig.' },
+  { value: 'ltx', label: 'LTX-Video (GPU)', hint: 'Echte KI-Videogenerierung, benoetigt eine NVIDIA-GPU.' },
+  { value: 'wan', label: 'Wan (GPU)', hint: 'Echte KI-Videogenerierung, benoetigt eine NVIDIA-GPU.' },
+  { value: 'comfyui', label: 'ComfyUI', hint: 'Spricht einen ComfyUI-Workflow auf dem Host an.' },
+  { value: 'placeholder', label: 'Platzhalter (kein Video)', hint: 'Erzeugt nur einen technischen Testclip ohne Inhalt.' },
+];
+
+const MOTION_OPTIONS = [
+  ['kenburns', 'Ken Burns (abwechselnd)'],
+  ['zoom-in', 'Langsam heranfahren'],
+  ['zoom-out', 'Langsam herausfahren'],
+  ['pan-left', 'Schwenk nach links'],
+  ['pan-right', 'Schwenk nach rechts'],
+  ['none', 'Keine Bewegung'],
+] as const;
+
+const TRANSITION_OPTIONS = [
+  ['fade', 'Weiche Blende'],
+  ['dissolve', 'Aufloesen'],
+  ['slideleft', 'Schieben'],
+  ['wipeleft', 'Wischen'],
+  ['circleopen', 'Kreisblende'],
+  ['none', 'Harter Schnitt'],
+] as const;
+
+const GRADE_OPTIONS = [
+  ['cinematic', 'Kinolook'],
+  ['warm', 'Warm'],
+  ['cool', 'Kuehl'],
+  ['vivid', 'Kraeftig'],
+  ['muted', 'Gedaempft'],
+  ['none', 'Unveraendert'],
+] as const;
+
+const SUBTITLE_ANIMATIONS = [
+  ['pop', 'Wort fuer Wort (Pop)'],
+  ['karaoke', 'Karaoke-Hervorhebung'],
+  ['fade', 'Einblenden'],
+  ['none', 'Statisch'],
+] as const;
+
+const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
+  font: 'Inter',
+  fontSize: 48,
+  primaryColor: '#FFFFFF',
+  outlineColor: '#000000',
+  backgroundColor: null,
+  position: 'bottom',
+  marginVertical: 120,
+  bold: true,
+  uppercase: false,
+  animation: 'pop',
+  highlightColor: '#FACC15',
+  maxCharsPerLine: 32,
+};
+
 const STYLES = ['Cinematic', 'Realistic', 'Anime', 'Documentary', 'Futuristic', 'News', 'Educational', 'Funny', 'Dark', 'Minimal'];
 
 interface FormState {
@@ -36,6 +94,14 @@ interface FormState {
   videoProvider: string;
   scriptProvider: string;
   sceneCount: number;
+  motion: string;
+  motionStrength: number;
+  transition: string;
+  transitionDurationSec: number;
+  colorGrade: string;
+  vignette: boolean;
+  titleCardDurationSec: number;
+  subtitleStyle: SubtitleStyle;
   voiceEnabled: boolean;
   subtitlesEnabled: boolean;
   burnSubtitles: boolean;
@@ -59,6 +125,14 @@ function toForm(project?: Project): FormState {
     videoProvider: project?.settings.videoProvider ?? 'placeholder',
     scriptProvider: project?.settings.scriptProvider ?? 'template',
     sceneCount: project?.settings.sceneCount ?? 4,
+    motion: project?.settings.motion ?? 'kenburns',
+    motionStrength: project?.settings.motionStrength ?? 0.35,
+    transition: project?.settings.transition ?? 'fade',
+    transitionDurationSec: project?.settings.transitionDurationSec ?? 0.4,
+    colorGrade: project?.settings.colorGrade ?? 'cinematic',
+    vignette: project?.settings.vignette ?? true,
+    titleCardDurationSec: project?.settings.titleCardDurationSec ?? 0,
+    subtitleStyle: project?.settings.subtitleStyle ?? DEFAULT_SUBTITLE_STYLE,
     voiceEnabled: project?.settings.voiceEnabled ?? false,
     subtitlesEnabled: project?.settings.subtitlesEnabled ?? true,
     burnSubtitles: project?.settings.burnSubtitles ?? true,
@@ -129,6 +203,14 @@ export function ProjectsPage() {
         videoProvider: form.videoProvider,
         scriptProvider: form.scriptProvider,
         sceneCount: form.sceneCount,
+        motion: form.motion,
+        motionStrength: form.motionStrength,
+        transition: form.transition,
+        transitionDurationSec: form.transitionDurationSec,
+        colorGrade: form.colorGrade,
+        vignette: form.vignette,
+        titleCardDurationSec: form.titleCardDurationSec,
+        subtitleStyle: form.subtitleStyle,
         voiceEnabled: form.voiceEnabled,
         subtitlesEnabled: form.subtitlesEnabled,
         burnSubtitles: form.burnSubtitles,
@@ -202,7 +284,7 @@ export function ProjectsPage() {
                     ['Stil', project.style],
                     ['Format', FORMAT_LABEL[project.defaultFormat] ?? project.defaultFormat],
                     ['Laenge', `${project.defaultDurationSec}s`],
-                    ['Video-KI', project.settings.videoProvider],
+                    ['Videoquelle', PROVIDER_LABEL[project.settings.videoProvider] ?? project.settings.videoProvider],
                     ['Freigabe', project.requireApproval ? 'Pflicht' : 'Automatisch'],
                   ].map(([label, value]) => (
                     <div key={label}>
@@ -334,15 +416,16 @@ export function ProjectsPage() {
               />
             </Field>
 
-            <Field label="Video-KI Adapter" hint="placeholder erzeugt nur einen Testclip">
+            <Field label="Videoquelle" hint={PROVIDER_OPTIONS.find((entry) => entry.value === form.videoProvider)?.hint}>
               <Select
                 value={form.videoProvider}
                 onChange={(event) => setForm({ ...form, videoProvider: event.target.value })}
               >
-                <option value="placeholder">Platzhalter (kein KI-Video)</option>
-                <option value="ltx">LTX-Video (GPU)</option>
-                <option value="wan">Wan (GPU)</option>
-                <option value="comfyui">ComfyUI</option>
+                {PROVIDER_OPTIONS.map((entry) => (
+                  <option key={entry.value} value={entry.value}>
+                    {entry.label}
+                  </option>
+                ))}
               </Select>
             </Field>
 
@@ -395,6 +478,120 @@ export function ProjectsPage() {
               })}
             </div>
           </Field>
+
+          <div className="space-y-4 rounded-xl border border-edge bg-surface-raised p-4">
+            <p className="text-sm font-medium text-ink">Look und Schnitt</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Kamerabewegung" hint="Gilt fuer Bilder und Standbild-Material">
+                <Select value={form.motion} onChange={(event) => setForm({ ...form, motion: event.target.value })}>
+                  {MOTION_OPTIONS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label={`Staerke der Bewegung (${Math.round(form.motionStrength * 100)}%)`}>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(form.motionStrength * 100)}
+                  onChange={(event) => setForm({ ...form, motionStrength: Number(event.target.value) / 100 })}
+                  className="w-full accent-brand-500"
+                />
+              </Field>
+
+              <Field label="Uebergang zwischen Szenen">
+                <Select value={form.transition} onChange={(event) => setForm({ ...form, transition: event.target.value })}>
+                  {TRANSITION_OPTIONS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Uebergangsdauer (Sekunden)">
+                <Input
+                  type="number"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={form.transitionDurationSec}
+                  onChange={(event) =>
+                    setForm({ ...form, transitionDurationSec: Number.parseFloat(event.target.value) || 0 })
+                  }
+                />
+              </Field>
+
+              <Field label="Farblook">
+                <Select value={form.colorGrade} onChange={(event) => setForm({ ...form, colorGrade: event.target.value })}>
+                  {GRADE_OPTIONS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Titelkarte (Sekunden)" hint="0 blendet keinen Titel ein">
+                <Input
+                  type="number"
+                  min={0}
+                  max={6}
+                  step={0.5}
+                  value={form.titleCardDurationSec}
+                  onChange={(event) =>
+                    setForm({ ...form, titleCardDurationSec: Number.parseFloat(event.target.value) || 0 })
+                  }
+                />
+              </Field>
+
+              <Field label="Untertitel-Animation">
+                <Select
+                  value={form.subtitleStyle.animation}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      subtitleStyle: {
+                        ...form.subtitleStyle,
+                        animation: event.target.value as SubtitleStyle['animation'],
+                      },
+                    })
+                  }
+                >
+                  {SUBTITLE_ANIMATIONS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Farbe des aktiven Wortes">
+                <input
+                  type="color"
+                  value={form.subtitleStyle.highlightColor}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      subtitleStyle: { ...form.subtitleStyle, highlightColor: event.target.value },
+                    })
+                  }
+                  className="h-10 w-full cursor-pointer rounded-lg border border-edge bg-surface"
+                />
+              </Field>
+            </div>
+
+            <Toggle
+              checked={form.vignette}
+              onChange={(value) => setForm({ ...form, vignette: value })}
+              label="Vignette"
+              description="Dunkelt die Bildraender leicht ab und lenkt den Blick zur Mitte."
+            />
+          </div>
 
           <Field label="Prompt-Zusatz" hint="Wird an jeden Bild-Prompt angehaengt">
             <Input

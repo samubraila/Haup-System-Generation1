@@ -127,8 +127,9 @@ export interface SubtitleStyleInput {
   marginVertical: number;
   bold: boolean;
   uppercase: boolean;
-  animation: 'none' | 'fade' | 'karaoke';
+  animation: 'none' | 'fade' | 'karaoke' | 'pop';
   maxCharsPerLine: number;
+  highlightColor?: string;
 }
 
 export function buildForceStyle(style: SubtitleStyleInput, scaleFactor: number): string {
@@ -165,4 +166,13 @@ const OVERLAY_POSITION: Record<string, string> = {
 
 export function overlayPosition(position: string): string {
   return OVERLAY_POSITION[position] ?? OVERLAY_POSITION['bottom-right']!;
+}
+
+export function escapeDrawText(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, '')
+    .replace(/%/g, '\\%')
+    .slice(0, 200);
 }

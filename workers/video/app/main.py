@@ -12,11 +12,15 @@ from .adapters.base import AdapterUnavailable, GenerationRequest
 from .adapters.comfyui import ComfyUiAdapter
 from .adapters.ltx import LtxAdapter
 from .adapters.placeholder import PlaceholderAdapter
+from .adapters.slideshow import SlideshowAdapter
+from .adapters.stock import StockAdapter
 from .adapters.wan import WanAdapter
 
 QUEUE = "video"
 
 ADAPTERS = {
+    "stock": StockAdapter,
+    "slideshow": SlideshowAdapter,
     "ltx": LtxAdapter,
     "wan": WanAdapter,
     "comfyui": ComfyUiAdapter,
@@ -128,11 +132,25 @@ def handle(ctx: JobContext) -> dict[str, Any]:
         scene_index=scene_index,
         scene_count=int(data.get("sceneCount") or 1),
         output_path=output_path,
+        keywords=[str(k) for k in (data.get("keywords") or [])],
+        motion=str(data.get("motion") or "kenburns"),
+        motion_strength=float(data.get("motionStrength") or 0.35),
+        image_paths=[],
+        stock_orientation=str(data.get("stockOrientation") or ""),
     )
 
     try:
         if data.get("initImagePath"):
             request.init_image_path = ctx.storage.pull(str(data["initImagePath"]), work_dir)
+
+        for stored in data.get("imagePaths") or []:
+            try:
+                request.image_paths.append(ctx.storage.pull(str(stored), work_dir))
+            except Exception as exc:  # noqa: BLE001
+                ctx.logger.warning(
+                    "Bild konnte nicht geladen werden",
+                    extra={"extra": {"path": str(stored), "error": str(exc)}},
+                )
 
         ctx.report_progress(5, f"Adapter {provider} startet")
 
@@ -167,6 +185,7 @@ def handle(ctx: JobContext) -> dict[str, Any]:
                     "producesAiVideo": adapter.produces_ai_video,
                     "prompt": request.prompt[:500],
                     "gpu": gpu.name,
+                    "attribution": getattr(adapter, "last_attribution", None),
                 },
             }
         )
@@ -177,6 +196,7 @@ def handle(ctx: JobContext) -> dict[str, Any]:
             "sceneIndex": scene_index,
             "provider": provider,
             "producesAiVideo": adapter.produces_ai_video,
+            "attribution": getattr(adapter, "last_attribution", None),
         }
     finally:
         ctx.storage.remove_temp_dir(work_dir)

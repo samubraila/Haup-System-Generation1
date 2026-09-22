@@ -59,12 +59,30 @@ export type ImageJob = z.infer<typeof imageJobSchema>;
 
 // --- video-worker (lokale Video-KI) -----------------------------------------
 
+export const videoProviderSchema = z.enum([
+  'stock',
+  'slideshow',
+  'ltx',
+  'wan',
+  'comfyui',
+  'placeholder',
+]);
+export type VideoProvider = z.infer<typeof videoProviderSchema>;
+
+export const motionSchema = z.enum(['none', 'kenburns', 'zoom-in', 'zoom-out', 'pan-left', 'pan-right']);
+export type Motion = z.infer<typeof motionSchema>;
+
 export const videoJobSchema = z.object({
   projectId: z.string().uuid(),
   videoId: z.string().uuid(),
   prompt: z.string().min(1),
   negativePrompt: z.string().default(''),
-  provider: z.enum(['ltx', 'wan', 'comfyui', 'placeholder']).default('placeholder'),
+  provider: videoProviderSchema.default('placeholder'),
+  keywords: z.array(z.string()).default([]),
+  motion: motionSchema.default('kenburns'),
+  motionStrength: z.number().min(0).max(1).default(0.35),
+  imagePaths: z.array(z.string()).default([]),
+  stockOrientation: z.enum(['portrait', 'landscape', 'square']).default('portrait'),
   width: z.number().int().positive().default(768),
   height: z.number().int().positive().default(1344),
   fps: z.number().int().positive().default(24),
@@ -105,8 +123,9 @@ export const subtitleStyleSchema = z.object({
   bold: z.boolean().default(true),
   uppercase: z.boolean().default(false),
   /** Karaoke hebt das gerade gesprochene Wort hervor. */
-  animation: z.enum(['none', 'fade', 'karaoke']).default('none'),
+  animation: z.enum(['none', 'fade', 'karaoke', 'pop']).default('none'),
   maxCharsPerLine: z.number().int().positive().default(38),
+  highlightColor: z.string().default('#FACC15'),
 });
 export type SubtitleStyle = z.infer<typeof subtitleStyleSchema>;
 
@@ -119,6 +138,8 @@ export const subtitleJobSchema = z.object({
   /** Liegt bereits ein Skript vor, verbessert es die Erkennungsgenauigkeit. */
   transcriptHint: z.string().default(''),
   style: subtitleStyleSchema.default({}),
+  videoWidth: z.number().int().positive().default(1080),
+  videoHeight: z.number().int().positive().default(1920),
 });
 export type SubtitleJob = z.infer<typeof subtitleJobSchema>;
 
@@ -136,11 +157,24 @@ export const renderTargetSchema = z.object({
 });
 export type RenderTarget = z.infer<typeof renderTargetSchema>;
 
+export const transitionSchema = z.enum(['none', 'fade', 'slideleft', 'wipeleft', 'circleopen', 'dissolve']);
+export type Transition = z.infer<typeof transitionSchema>;
+
+export const colorGradeSchema = z.enum(['none', 'cinematic', 'warm', 'cool', 'vivid', 'muted']);
+export type ColorGrade = z.infer<typeof colorGradeSchema>;
+
 export const ffmpegJobSchema = z.object({
   projectId: z.string().uuid(),
   videoId: z.string().uuid(),
   /** Ein oder mehrere KI-Clips, die in dieser Reihenfolge aneinandergehaengt werden. */
   sourcePaths: z.array(z.string().min(1)).min(1),
+  transition: transitionSchema.default('fade'),
+  transitionDurationSec: z.number().min(0).max(2).default(0.4),
+  colorGrade: colorGradeSchema.default('cinematic'),
+  vignette: z.boolean().default(true),
+  titleCard: z.string().default(''),
+  titleCardDurationSec: z.number().min(0).max(6).default(0),
+  subtitleAssPath: z.string().nullable().default(null),
   audioPath: z.string().nullable().default(null),
   musicPath: z.string().nullable().default(null),
   musicVolume: z.number().min(0).max(1).default(0.15),

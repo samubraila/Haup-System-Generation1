@@ -5,6 +5,25 @@ export interface Scene {
   prompt: string;
   narration: string;
   durationSec: number;
+  keywords: string[];
+}
+
+const KEYWORD_STOPWORDS = new Set([
+  'der', 'die', 'das', 'und', 'oder', 'mit', 'von', 'fuer', 'ein', 'eine', 'einen', 'dem', 'den',
+  'the', 'and', 'with', 'from', 'for', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'about',
+]);
+
+export function extractKeywords(text: string, limit = 3): string[] {
+  const words = text.match(/\p{L}{4,}/gu) ?? [];
+  const picked: string[] = [];
+  for (const word of words) {
+    const lowered = word.toLowerCase();
+    if (KEYWORD_STOPWORDS.has(lowered)) continue;
+    if (picked.some((entry) => entry.toLowerCase() === lowered)) continue;
+    picked.push(word);
+    if (picked.length >= limit) break;
+  }
+  return picked;
 }
 
 export interface ScriptDraft {
@@ -78,6 +97,7 @@ export function buildTemplateScript(request: ScriptRequest): ScriptDraft {
       prompt: [subject, request.style, shot, request.guidance].filter(Boolean).join(', '),
       narration: `[${position}] ${subject}`,
       durationSec: perScene,
+      keywords: extractKeywords(`${subject} ${request.description}`),
     };
   });
 
@@ -99,6 +119,7 @@ const ollamaSceneSchema = z.object({
   prompt: z.string().min(1),
   narration: z.string().default(''),
   durationSec: z.number().positive().optional(),
+  keywords: z.array(z.string()).optional(),
 });
 
 const ollamaResponseSchema = z.object({
@@ -129,11 +150,13 @@ function buildPrompt(request: ScriptRequest): string {
     request.guidance ? `Zusaetzliche Vorgabe: ${request.guidance}` : '',
     '',
     'Antworte ausschliesslich mit JSON in genau dieser Struktur:',
-    '{"title": "...", "hook": "...", "scenes": [{"prompt": "englische Bildbeschreibung fuer ein KI-Videomodell", "narration": "gesprochener Text", "durationSec": 5}]}',
+    '{"title": "...", "hook": "...", "scenes": [{"prompt": "englische Bildbeschreibung", "narration": "gesprochener Text", "durationSec": 5, "keywords": ["englisches", "stichwort"]}]}',
     '',
     'Regeln:',
     '- "narration" ist der gesprochene Text in der Zielsprache, kurz und praegnant.',
     '- "prompt" ist eine visuelle Beschreibung auf Englisch, ohne Text im Bild, ohne Markenlogos.',
+    '- "keywords" sind zwei bis drei einfache englische Suchbegriffe fuer eine Stockvideo-Datenbank,',
+    '  zum Beispiel ["night sky", "stars"]. Keine Adjektive wie "cinematic", keine Satzzeichen.',
     '- Die Summe aller durationSec ergibt ungefaehr die Gesamtlaenge.',
     '- Kein Fliesstext ausserhalb des JSON.',
   ]
@@ -188,6 +211,10 @@ export async function generateWithOllama(
     prompt: [scene.prompt, request.style, request.guidance].filter(Boolean).join(', '),
     narration: scene.narration,
     durationSec: Math.max(2, Math.min(15, Math.round(scene.durationSec ?? perScene))),
+    keywords:
+      scene.keywords && scene.keywords.length > 0
+        ? scene.keywords.map((word) => word.trim()).filter(Boolean).slice(0, 4)
+        : extractKeywords(scene.prompt),
   }));
 
   const body = scenes.map((scene) => scene.narration).filter(Boolean).join('\n');

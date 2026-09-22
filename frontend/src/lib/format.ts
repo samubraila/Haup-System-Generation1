@@ -126,6 +126,15 @@ export const FORMAT_LABEL: Record<string, string> = {
   facebook_reel: 'Facebook Reel',
 };
 
+export const PROVIDER_LABEL: Record<string, string> = {
+  stock: 'Stock-Material',
+  slideshow: 'Eigene Bilder',
+  ltx: 'LTX-Video (GPU)',
+  wan: 'Wan (GPU)',
+  comfyui: 'ComfyUI',
+  placeholder: 'Platzhalter',
+};
+
 export const LANGUAGE_LABEL: Record<string, string> = {
   de: 'Deutsch',
   en: 'Englisch',

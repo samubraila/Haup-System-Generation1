@@ -61,6 +61,10 @@ jobs:
         working-directory: workers/subtitle
         run: python -m unittest discover -s tests -v
 
+      - name: Video-Worker-Tests
+        working-directory: workers/video
+        run: python -m unittest discover -s tests -v
+
       - name: Queue-Protokoll stimmt zwischen TypeScript und Python ueberein
         run: python scripts/check-queue-parity.py
 

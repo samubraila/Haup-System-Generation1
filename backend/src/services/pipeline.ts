@@ -40,6 +40,7 @@ interface ScriptScene {
   prompt: string;
   narration: string;
   durationSec: number;
+  keywords?: string[];
 }
 
 interface ScriptRow {
@@ -263,6 +264,15 @@ export async function enqueueStage(video: VideoRow, project: ProjectRow, stage: 
           : [{ index: 0, prompt: `${video.topic || video.title}, ${video.style}`, narration: '', durationSec: video.duration_sec }];
 
       const done = new Set((await sceneMedia(video.id)).map((m) => Number(m.meta.sceneIndex ?? -1)));
+      const projectImages = (
+        await queryMany<MediaRow>(
+          `SELECT path FROM media
+           WHERE project_id = $1 AND kind = 'image' AND (video_id IS NULL OR video_id = $2)
+           ORDER BY created_at DESC
+           LIMIT 40`,
+          [project.id, video.id],
+        )
+      ).map((row) => row.path);
       const jobs: VideoJobRow[] = [];
 
       for (const scene of scenes) {
@@ -293,6 +303,11 @@ export async function enqueueStage(video: VideoRow, project: ProjectRow, stage: 
               initImagePath: null,
               sceneIndex: scene.index,
               sceneCount: scenes.length,
+              keywords: scene.keywords ?? [],
+              motion: settings.motion,
+              motionStrength: settings.motionStrength,
+              imagePaths: projectImages,
+              stockOrientation: height > width ? 'portrait' : width > height ? 'landscape' : 'square',
             },
           }),
         );
@@ -359,6 +374,8 @@ export async function enqueueStage(video: VideoRow, project: ProjectRow, stage: 
           language: video.language as Language,
           transcriptHint: script?.body?.slice(0, 2000) ?? '',
           style: settings.subtitleStyle,
+          videoWidth: width,
+          videoHeight: height,
         },
       });
       return [job];
@@ -374,6 +391,15 @@ export async function enqueueStage(video: VideoRow, project: ProjectRow, stage: 
       const subtitle = video.subtitle_media_id
         ? await queryOne<MediaRow>('SELECT path FROM media WHERE id = $1', [video.subtitle_media_id])
         : null;
+      const animatedSubtitle =
+        settings.subtitleStyle.animation === 'none'
+          ? null
+          : await queryOne<MediaRow>(
+              `SELECT path FROM media
+               WHERE video_id = $1 AND kind = 'subtitle' AND meta->>'format' = 'ass'
+               ORDER BY created_at DESC LIMIT 1`,
+              [video.id],
+            );
 
       const job = await insertJob({
         videoId: video.id,
@@ -392,8 +418,15 @@ export async function enqueueStage(video: VideoRow, project: ProjectRow, stage: 
           musicPath: settings.musicPath,
           musicVolume: settings.musicVolume,
           subtitlePath: subtitle?.path ?? null,
+          subtitleAssPath: animatedSubtitle?.path ?? null,
           subtitleStyle: settings.subtitleStyle,
-          burnSubtitles: settings.burnSubtitles && Boolean(subtitle),
+          burnSubtitles: settings.burnSubtitles && Boolean(subtitle ?? animatedSubtitle),
+          transition: settings.transition,
+          transitionDurationSec: settings.transitionDurationSec,
+          colorGrade: settings.colorGrade,
+          vignette: settings.vignette,
+          titleCard: settings.titleCardDurationSec > 0 ? video.title : '',
+          titleCardDurationSec: settings.titleCardDurationSec,
           watermarkPath: settings.watermarkPath,
           watermarkPosition: settings.watermarkPosition,
           watermarkOpacity: settings.watermarkOpacity,
