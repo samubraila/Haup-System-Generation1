@@ -9,7 +9,7 @@ import {
 } from '@acf/worker-core';
 import { config } from '../config/index.js';
 import { query, queryMany, queryOne } from '../db/pool.js';
-import { jobQueue } from '../queue/index.js';
+import { jobQueue, redis } from '../queue/index.js';
 import { events } from '../utils/events.js';
 import { ownerOfVideo } from './ownership.js';
 import { writeLog } from './log-store.js';
@@ -471,7 +471,36 @@ export async function startPipeline(videoId: string): Promise<void> {
   });
 }
 
+const ADVANCE_LOCK_TTL_SEC = 30;
+const ADVANCE_LOCK_WAIT_MS = 5000;
+
+async function withAdvanceLock(videoId: string, fn: () => Promise<void>): Promise<void> {
+  const key = `${'acf'}:lock:pipeline:${videoId}`;
+  const token = `${process.pid}-${videoId}`;
+  const deadline = Date.now() + ADVANCE_LOCK_WAIT_MS;
+
+  while (Date.now() < deadline) {
+    const acquired = await redis.set(key, token, 'EX', ADVANCE_LOCK_TTL_SEC, 'NX');
+    if (acquired) {
+      try {
+        await fn();
+      } finally {
+        const current = await redis.get(key).catch(() => null);
+        if (current === token) await redis.del(key).catch(() => undefined);
+      }
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+
+  await writeLog('warn', 'pipeline', 'Pipeline-Schritt uebersprungen, ein anderer Lauf war schneller', { videoId });
+}
+
 export async function advancePipeline(videoId: string): Promise<void> {
+  await withAdvanceLock(videoId, () => advancePipelineLocked(videoId));
+}
+
+async function advancePipelineLocked(videoId: string): Promise<void> {
   const video = await loadVideo(videoId);
   if (!video) return;
   if (video.status === 'FAILED' || video.status === 'ARCHIVED') return;
