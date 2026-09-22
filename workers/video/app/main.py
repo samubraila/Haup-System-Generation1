@@ -105,13 +105,17 @@ def handle(ctx: JobContext) -> dict[str, Any]:
             config.gpu_recheck_sec * 1000,
         )
 
+    prompt = str(data.get("prompt") or "")
+    if not prompt:
+        raise PermanentJobError("Der Prompt ist leer")
+
     scene_index = int(data.get("sceneIndex") or 0)
     work_dir = ctx.storage.create_temp_dir(f"video-{video_id[:8]}")
     output_name = f"{video_id}-scene-{scene_index:02d}.mp4"
     output_path = os.path.join(work_dir, output_name)
 
     request = GenerationRequest(
-        prompt=str(data.get("prompt") or ""),
+        prompt=prompt,
         negative_prompt=str(data.get("negativePrompt") or ""),
         width=int(data.get("width") or 768),
         height=int(data.get("height") or 1344),
@@ -126,13 +130,10 @@ def handle(ctx: JobContext) -> dict[str, Any]:
         output_path=output_path,
     )
 
-    if not request.prompt:
-        raise PermanentJobError("Der Prompt ist leer")
-
-    if data.get("initImagePath"):
-        request.init_image_path = ctx.storage.pull(str(data["initImagePath"]), work_dir)
-
     try:
+        if data.get("initImagePath"):
+            request.init_image_path = ctx.storage.pull(str(data["initImagePath"]), work_dir)
+
         ctx.report_progress(5, f"Adapter {provider} startet")
 
         try:

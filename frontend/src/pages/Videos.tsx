@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Film, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LoadingGrid, PageHeader, SectionGrid, VideoCard } from '@/components/common';
+import { ErrorNote, LoadingGrid, PageHeader, SectionGrid, VideoCard } from '@/components/common';
 import { NewVideoWizard } from '@/components/video/NewVideoWizard';
 import { Button, Card, EmptyState, Input, Select } from '@/components/ui';
-import { api } from '@/lib/api';
-import { FORMAT_LABEL, VIDEO_STATUS } from '@/lib/format';
+import { api, ApiError } from '@/lib/api';
+import { VIDEO_STATUS } from '@/lib/format';
 import type { Paged, Project, Video, VideoStatus } from '@/lib/types';
 
 const STATUS_OPTIONS: VideoStatus[] = [
@@ -57,7 +57,7 @@ export function VideosPage({
     return params.toString();
   }, [page, status, projectId, searchParams]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['videos', queryString],
     queryFn: () => api.get<Paged<Video>>(`/api/videos?${queryString}`),
     refetchInterval: 20_000,
@@ -131,6 +131,8 @@ export function VideosPage({
 
       {isLoading ? (
         <LoadingGrid />
+      ) : error ? (
+        <ErrorNote message={error instanceof ApiError ? error.message : 'Die Videos konnten nicht geladen werden'} />
       ) : (data?.items.length ?? 0) === 0 ? (
         <Card>
           <EmptyState
@@ -199,4 +201,3 @@ export function DraftsPage() {
   );
 }
 
-export { FORMAT_LABEL };

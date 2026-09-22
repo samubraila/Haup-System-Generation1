@@ -80,6 +80,8 @@ local jobKey = ARGV[3] .. jobId
 redis.call('LREM', KEYS[2], 1, jobId)
 redis.call('DEL', ARGV[4] .. jobId)
 if redis.call('EXISTS', jobKey) == 0 then return 'GONE' end
+local status = redis.call('HGET', jobKey, 'status')
+if status == 'CANCELLED' then return 'CANCELLED' end
 local attempts = tonumber(redis.call('HGET', jobKey, 'attempts') or '0')
 local maxAttempts = tonumber(redis.call('HGET', jobKey, 'maxAttempts') or '1')
 local permanent = ARGV[7] == '1'
@@ -101,6 +103,8 @@ local jobKey = ARGV[3] .. jobId
 redis.call('LREM', KEYS[2], 1, jobId)
 redis.call('DEL', ARGV[4] .. jobId)
 if redis.call('EXISTS', jobKey) == 0 then return 'GONE' end
+local status = redis.call('HGET', jobKey, 'status')
+if status == 'CANCELLED' then return 'CANCELLED' end
 redis.call('HINCRBY', jobKey, 'attempts', -1)
 redis.call('HSET', jobKey, 'status', ARGV[6], 'error', ARGV[5], 'updatedAt', ARGV[2], 'lockedBy', '')
 redis.call('ZADD', KEYS[4], tonumber(ARGV[2]) + tonumber(ARGV[7]), jobId)

@@ -5,10 +5,8 @@ import {
   buildCaption,
   emptyAnalytics,
   PlatformRejectedError,
-  type AdapterContext,
   type AnalyticsSnapshot,
   type PlatformAdapter,
-  type PublishInput,
   type PublishResult,
 } from '../types.js';
 
@@ -65,8 +63,9 @@ export const tiktokAdapter: PlatformAdapter = {
     const stat = await fs.stat(input.localVideoPath);
     if (stat.size === 0) throw new PlatformRejectedError('Die Videodatei ist leer');
 
-    const chunkSize = stat.size < CHUNK_BYTES ? stat.size : CHUNK_BYTES;
-    const totalChunks = Math.max(1, Math.ceil(stat.size / chunkSize));
+    const singleChunk = stat.size <= CHUNK_BYTES;
+    const chunkSize = singleChunk ? stat.size : CHUNK_BYTES;
+    const totalChunks = singleChunk ? 1 : Math.floor(stat.size / chunkSize);
 
     await ctx.reportProgress(5, 'Upload wird bei TikTok angemeldet');
 

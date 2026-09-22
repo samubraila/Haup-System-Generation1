@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/common';
 import { Badge, Button, Card, CardHeader, Skeleton, StatusDot } from '@/components/ui';
 import { api } from '@/lib/api';
-import { cn, formatNumber, toneClasses } from '@/lib/format';
+import { cn, toneClasses } from '@/lib/format';
 import type { ServiceState, WorkerHeartbeat } from '@/lib/types';
 
 function useWorker(queue: string) {
@@ -295,4 +295,3 @@ export function StudioSubtitlePage() {
   );
 }
 
-export { formatNumber };

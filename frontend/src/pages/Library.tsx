@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileAudio, FileText, FileVideo, Image as ImageIcon, Search, Subtitles, Trash2, Upload } from 'lucide-react';
 import { useRef, useState, type DragEvent } from 'react';
 import { PageHeader } from '@/components/common';
-import { Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Skeleton, Tabs } from '@/components/ui';
+import { Button, Card, EmptyState, Field, Input, Modal, Select, Skeleton, Tabs } from '@/components/ui';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiError, mediaUrl } from '@/lib/api';
 import { cn, formatBytes, formatDuration, formatRelative } from '@/lib/format';

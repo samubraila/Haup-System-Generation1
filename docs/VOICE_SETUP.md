@@ -124,10 +124,15 @@ Steht `ready` auf `nein`, nennt das Feld `note` den Grund.
 Die Sprachausgabe ist optional. Ist sie im Projekt ausgeschaltet, überspringt
 die Pipeline den Schritt.
 
-Wichtig dabei: Ohne Tonspur kann der Subtitle-Worker nichts transkribieren. Er
-meldet dann `Die Quelldatei enthält keine verwertbare Tonspur` — korrekt, aber
-unnötig. Für Videos ohne Sprache deshalb auch die Untertitel im Projekt
-ausschalten oder eine eigene Audiodatei über die Medienbibliothek hochladen.
+**Untertitel hängen an der Tonspur.** Ohne Sprachausgabe gibt es nichts zu
+transkribieren, deshalb überspringt die Pipeline den Untertitel-Schritt
+automatisch und schreibt einen Hinweis ins Log — auch wenn Untertitel im Projekt
+eingeschaltet sind. Das Video wird trotzdem fertig gerendert.
+
+Willst du Untertitel ohne erzeugte Sprachausgabe, gibt es zwei Wege:
+
+- Sprachausgabe einrichten (diese Seite) und im Projekt aktivieren, oder
+- eine eigene Tonspur über die Medienbibliothek hochladen und dem Video zuordnen.
 
 ---
 

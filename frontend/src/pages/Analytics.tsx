@@ -15,9 +15,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { MetricCard, PageHeader, PlatformChip } from '@/components/common';
+import { ErrorNote, MetricCard, PageHeader, PlatformChip } from '@/components/common';
 import { Card, CardHeader, EmptyState, Select, Skeleton } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { formatNumber, PLATFORM_META } from '@/lib/format';
 import type { AnalyticsSummary, Platform } from '@/lib/types';
 
@@ -54,7 +54,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 export function AnalyticsPage() {
   const [days, setDays] = useState('30');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['analytics', days],
     queryFn: () => api.get<AnalyticsSummary>(`/api/analytics/summary?days=${days}`),
   });
@@ -90,6 +90,10 @@ export function AnalyticsPage() {
             </Card>
           ))}
         </div>
+      ) : error || !data ? (
+        <ErrorNote
+          message={error instanceof ApiError ? error.message : 'Die Kennzahlen konnten nicht geladen werden'}
+        />
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

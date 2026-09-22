@@ -6,3 +6,4 @@ process.env.ENCRYPTION_KEY ??= '0123456789abcdef0123456789abcdef0123456789abcdef
 process.env.INTERNAL_API_KEY ??= 'test-internal-api-key-1234567890';
 process.env.ADMIN_PASSWORD ??= 'TestPasswort123!';
 process.env.LOG_LEVEL ??= 'error';
+process.env.LOG_SILENT = 'true';

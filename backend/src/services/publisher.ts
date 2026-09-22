@@ -5,6 +5,7 @@ import { jobQueue } from '../queue/index.js';
 import { events } from '../utils/events.js';
 import { ConflictError, NotFoundError } from '../utils/errors.js';
 import { writeLog } from './log-store.js';
+import { ownerOfVideo } from './ownership.js';
 import type { MediaRow, SocialAccountRow, SocialPostRow, VideoRow } from './types.js';
 
 export type Platform = 'youtube' | 'tiktok' | 'instagram' | 'facebook';
@@ -114,13 +115,10 @@ export async function enqueuePublishJob(postId: string, delayMs = 0): Promise<st
     [postId, render.id],
   );
 
-  events.publish({
-    type: 'post.updated',
-    postId,
-    videoId: post.video_id,
-    platform,
-    status: 'queued',
-  });
+  events.publish(
+    { type: 'post.updated', postId, videoId: post.video_id, platform, status: 'queued' },
+    await ownerOfVideo(post.video_id),
+  );
 
   await writeLog('info', 'publisher', `Veroeffentlichung eingereiht: ${platform}`, {
     postId,
@@ -167,6 +165,16 @@ export async function retryPost(postId: string): Promise<void> {
   const post = await queryOne<SocialPostRow>('SELECT * FROM social_posts WHERE id = $1', [postId]);
   if (!post) throw new NotFoundError('Veroeffentlichung');
   if (post.status === 'published') throw new ConflictError('Dieser Beitrag wurde bereits veroeffentlicht');
+
+  const active = await queryOne<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM publishing_jobs
+     WHERE social_post_id = $1 AND status IN ('PENDING', 'RUNNING')`,
+    [postId],
+  );
+  if ((active?.count ?? 0) > 0) {
+    throw new ConflictError('Fuer diesen Beitrag laeuft bereits ein Upload. Bitte abwarten oder zuerst abbrechen.');
+  }
+
   await enqueuePublishJob(postId, 0);
 }
 
@@ -206,10 +214,10 @@ export async function syncVideoPublishState(videoId: string): Promise<void> {
     await query(`UPDATE videos SET status = 'PUBLISHED', published_at = COALESCE(published_at, now()) WHERE id = $1`, [
       videoId,
     ]);
-    events.publish({ type: 'video.updated', videoId, status: 'PUBLISHED', progress: 100 });
+    events.publish({ type: 'video.updated', videoId, status: 'PUBLISHED', progress: 100 }, await ownerOfVideo(videoId));
   } else if (published > 0) {
     await query(`UPDATE videos SET status = 'PUBLISHING' WHERE id = $1 AND status <> 'PUBLISHED'`, [videoId]);
-    events.publish({ type: 'video.updated', videoId, status: 'PUBLISHING', progress: 100 });
+    events.publish({ type: 'video.updated', videoId, status: 'PUBLISHING', progress: 100 }, await ownerOfVideo(videoId));
   } else if (active > 0) {
     await query(`UPDATE videos SET status = 'PUBLISHING' WHERE id = $1 AND status NOT IN ('PUBLISHED')`, [videoId]);
   }

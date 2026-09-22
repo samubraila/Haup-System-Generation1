@@ -51,10 +51,11 @@ class EventBus {
     };
   }
 
-  publish(event: AppEvent): void {
+  publish(event: AppEvent, ownerId?: string | null): void {
     if (this.subscribers.size === 0) return;
     const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
     for (const sub of this.subscribers.values()) {
+      if (ownerId && sub.userId !== ownerId) continue;
       try {
         sub.res.write(payload);
       } catch (err) {

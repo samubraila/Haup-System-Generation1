@@ -127,7 +127,8 @@ Häufige Ursachen:
 | `Modellverzeichnis ... existiert nicht` | Modell nicht heruntergeladen |
 | `ComfyUI unter ... nicht erreichbar` | ComfyUI läuft nicht oder ohne `--listen 0.0.0.0` |
 | `Der Adapter hat keine verwertbare Videodatei erzeugt` | Workflow ohne Video-Export-Node |
-| `Die Quelldatei enthält keine verwertbare Tonspur` | Untertitel ohne Sprachausgabe angefordert |
+| `Die Quelldatei enthält keine verwertbare Tonspur` | Die zugeordnete Audiodatei hat keinen Ton |
+| `Die Tonspur konnte nicht geladen werden` | Datei fehlt im Speicher — Video neu generieren |
 | `Zeitüberschreitung` | `JOB_TIMEOUT_MS` erhöhen |
 
 ### Job hängt auf RUNNING
@@ -161,10 +162,13 @@ Projekt eine Musikdatei hinterlegen.
 
 ### Untertitel erscheinen nicht im Bild
 
-1. Untertitel im Projekt aktiviert?
-2. *Untertitel ins Bild brennen* aktiviert?
-3. Gibt es eine SRT-Datei? (Videodetail → Dateien)
-4. Subtitle-Worker gestartet? (`--profile ai`)
+1. **Gibt es überhaupt eine Tonspur?** Ohne Sprachausgabe oder hochgeladene
+   Audiodatei überspringt die Pipeline den Untertitel-Schritt bewusst — im
+   Log steht dann *Untertitel übersprungen: das Video hat keine Tonspur*.
+2. Untertitel im Projekt aktiviert?
+3. *Untertitel ins Bild brennen* aktiviert?
+4. Gibt es eine SRT-Datei? (Videodetail → Dateien)
+5. Subtitle-Worker gestartet? (`--profile ai`)
 
 ### Untertitel in falscher Schrift
 

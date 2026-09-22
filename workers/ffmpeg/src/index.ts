@@ -34,19 +34,38 @@ await runWorker({
       }
       if (clipPaths.length === 0) throw new PermanentJobError('Es wurden keine Videoclips uebergeben');
 
-      const audioPath = job.audioPath ? await ctx.storage.pull(job.audioPath, workDir).catch(() => null) : null;
-      const musicPath = job.musicPath ? await ctx.storage.pull(job.musicPath, workDir).catch(() => null) : null;
-      const watermarkPath = job.watermarkPath
-        ? await ctx.storage.pull(job.watermarkPath, workDir).catch(() => null)
-        : null;
+      const required = async (label: string, storagePath: string): Promise<string> => {
+        try {
+          return await ctx.storage.pull(storagePath, workDir);
+        } catch (err) {
+          throw new PermanentJobError(
+            `${label} konnte nicht geladen werden (${storagePath}): ${(err as Error).message}`,
+          );
+        }
+      };
+
+      const optional = async (label: string, storagePath: string): Promise<string | null> => {
+        try {
+          return await ctx.storage.pull(storagePath, workDir);
+        } catch (err) {
+          ctx.logger.warn({ err: (err as Error).message, storagePath }, `${label} wird ausgelassen`);
+          await ctx.api.log('warn', `${label} konnte nicht geladen werden und fehlt im Video`, {
+            videoId: job.videoId,
+            path: storagePath,
+          });
+          return null;
+        }
+      };
+
+      const audioPath = job.audioPath ? await required('Die Tonspur', job.audioPath) : null;
+      const musicPath = job.musicPath ? await optional('Die Hintergrundmusik', job.musicPath) : null;
+      const watermarkPath = job.watermarkPath ? await optional('Das Wasserzeichen', job.watermarkPath) : null;
 
       let subtitleFileName: string | null = null;
       if (job.subtitlePath && job.burnSubtitles) {
-        const pulled = await ctx.storage.pull(job.subtitlePath, workDir).catch(() => null);
-        if (pulled) {
-          subtitleFileName = 'subtitles.srt';
-          await fs.copyFile(pulled, path.join(workDir, subtitleFileName));
-        }
+        const pulled = await required('Die Untertiteldatei', job.subtitlePath);
+        subtitleFileName = 'subtitles.srt';
+        await fs.copyFile(pulled, path.join(workDir, subtitleFileName));
       }
 
       let totalSourceSec = 0;

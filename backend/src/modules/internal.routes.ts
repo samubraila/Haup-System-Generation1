@@ -11,6 +11,7 @@ import { markAccountError, resolveCredentials, storeRefreshedTokens } from '../s
 import { openFileStream, statFile, writeStorageFile } from '../services/storage.js';
 import type { VideoJobRow } from '../services/types.js';
 import { events } from '../utils/events.js';
+import { ownerOfVideo } from '../services/ownership.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
 import { asyncHandler } from '../utils/http.js';
 
@@ -158,14 +159,17 @@ internalRouter.post(
         body.etaSeconds ?? null,
       ]);
       const videoId = job.row.video_id as string | null;
-      events.publish({
-        type: 'job.updated',
-        jobId: req.params.id!,
-        videoId,
-        status: 'RUNNING',
-        progress: Math.round(body.progress),
-        queue: String(job.row.queue ?? ''),
-      });
+      events.publish(
+        {
+          type: 'job.updated',
+          jobId: req.params.id!,
+          videoId,
+          status: 'RUNNING',
+          progress: Math.round(body.progress),
+          queue: String(job.row.queue ?? ''),
+        },
+        await ownerOfVideo(videoId),
+      );
       if (videoId) {
         await query('UPDATE videos SET progress = GREATEST(progress, $2) WHERE id = $1', [
           videoId,
@@ -285,14 +289,10 @@ internalRouter.post(
 
       await applyVideoJobResult(row, body.result);
 
-      events.publish({
-        type: 'job.updated',
-        jobId: row.id,
-        videoId: row.video_id,
-        status: 'COMPLETED',
-        progress: 100,
-        queue: row.queue,
-      });
+      events.publish(
+        { type: 'job.updated', jobId: row.id, videoId: row.video_id, status: 'COMPLETED', progress: 100, queue: row.queue },
+        await ownerOfVideo(row.video_id),
+      );
 
       if (row.video_id) await advancePipeline(row.video_id);
     } else {
@@ -314,13 +314,10 @@ internalRouter.post(
         [postId],
       );
       if (post) {
-        events.publish({
-          type: 'post.updated',
-          postId,
-          videoId: post.video_id,
-          platform: post.platform,
-          status: 'published',
-        });
+        events.publish(
+          { type: 'post.updated', postId, videoId: post.video_id, platform: post.platform, status: 'published' },
+          await ownerOfVideo(post.video_id),
+        );
         await syncVideoPublishState(post.video_id);
         await writeLog('info', 'publisher', `Veroeffentlicht auf ${post.platform}`, {
           postId,
@@ -352,14 +349,10 @@ internalRouter.post(
         [row.id, status, body.error, body.workerId],
       );
 
-      events.publish({
-        type: 'job.updated',
-        jobId: row.id,
-        videoId: row.video_id,
-        status,
-        progress: row.progress,
-        queue: row.queue,
-      });
+      events.publish(
+        { type: 'job.updated', jobId: row.id, videoId: row.video_id, status, progress: row.progress, queue: row.queue },
+        await ownerOfVideo(row.video_id),
+      );
 
       await writeLog(body.willRetry ? 'warn' : 'error', row.queue, `Job fehlgeschlagen: ${body.error}`, {
         jobId: row.id,
@@ -385,13 +378,10 @@ internalRouter.post(
           [postId],
         );
         if (post) {
-          events.publish({
-            type: 'post.updated',
-            postId,
-            videoId: post.video_id,
-            platform: post.platform,
-            status: 'failed',
-          });
+          events.publish(
+            { type: 'post.updated', postId, videoId: post.video_id, platform: post.platform, status: 'failed' },
+            await ownerOfVideo(post.video_id),
+          );
           await syncVideoPublishState(post.video_id);
         }
       }

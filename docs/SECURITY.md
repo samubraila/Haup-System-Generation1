@@ -117,6 +117,13 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 
 Mit `COOKIE_SECURE=true` kommt HSTS hinzu.
 
+## Live-Aktualisierung
+
+Der Ereignisstrom (`/api/system/events`) liefert Ereignisse zu Videos, Jobs und
+Veröffentlichungen **nur an den Besitzer** des jeweiligen Projekts. Technische
+Logmeldungen gehen an alle angemeldeten Abonnenten — genau wie der
+REST-Endpunkt `/api/system/logs`, der ebenfalls systemweit ist.
+
 ## Grenzwerte
 
 | Bereich | Grenze |

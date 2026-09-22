@@ -99,7 +99,8 @@ sich Projekteinstellungen ändern oder Szenen hinzukommen.
                             │
    Sprachausgabe an? ───────┼──▶ voice
                             │
-   Untertitel an? ──────────┼──▶ subtitle
+   Untertitel an?           │
+   und Tonspur da? ─────────┼──▶ subtitle
                             │
    keine Renderfassung? ────┼──▶ ffmpeg
                             │
@@ -155,6 +156,8 @@ wird periodisch erneut geprüft und startet, sobald ein passender Worker da ist.
 | Plattform-Upload schlägt fehl | Nur dieser eine Publisher ist betroffen |
 | Token abgelaufen | Automatische Erneuerung; scheitert sie, Konto auf `expired` und klare Meldung mit Reconnect |
 | Keine GPU | Generierungsjobs warten, alles andere läuft weiter |
+| Worker meldet Ergebnis nicht | Der Job gilt trotzdem als erledigt und wird nie doppelt ausgeführt |
+| Job endgültig gescheitert | Der Scheduler trägt das Ergebnis in die Datenbank nach, das Video bleibt nicht hängen |
 
 ## Speicher
 

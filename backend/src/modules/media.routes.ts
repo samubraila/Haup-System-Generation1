@@ -174,6 +174,11 @@ mediaRouter.post(
     const project = await queryOne('SELECT id FROM projects WHERE id = $1 AND user_id = $2', [projectId, req.user!.id]);
     if (!project) throw new NotFoundError('Projekt');
 
+    if (videoId) {
+      const video = await queryOne('SELECT id FROM videos WHERE id = $1 AND project_id = $2', [videoId, projectId]);
+      if (!video) throw new NotFoundError('Video');
+    }
+
     const extension = path.extname(file.originalname).toLowerCase();
     const declaredMime = mimeFromExtension(file.originalname);
     if (declaredMime !== 'application/octet-stream' && !declaredMime.split('/')[0]!.startsWith(file.mimetype.split('/')[0]!)) {

@@ -52,16 +52,21 @@ analyticsRouter.get(
       comments: number;
       published: number;
     }>(
-      `SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
-              COALESCE(SUM(a.views), 0)::bigint    AS views,
-              COALESCE(SUM(a.likes), 0)::bigint    AS likes,
-              COALESCE(SUM(a.comments), 0)::bigint AS comments,
-              COUNT(DISTINCT sp.id) FILTER (WHERE date_trunc('day', sp.published_at) = d.day)::int AS published
+      `WITH mine AS (
+         SELECT a.collected_at, a.views, a.likes, a.comments, sp.id AS post_id, sp.published_at
+         FROM analytics a
+         JOIN social_posts sp ON sp.id = a.social_post_id
+         JOIN videos v ON v.id = sp.video_id
+         JOIN projects p ON p.id = v.project_id
+         WHERE p.user_id = $1
+       )
+       SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+              COALESCE(SUM(m.views), 0)::bigint    AS views,
+              COALESCE(SUM(m.likes), 0)::bigint    AS likes,
+              COALESCE(SUM(m.comments), 0)::bigint AS comments,
+              COUNT(DISTINCT m.post_id) FILTER (WHERE date_trunc('day', m.published_at) = d.day)::int AS published
        FROM generate_series(date_trunc('day', now()) - ($2 || ' days')::interval, date_trunc('day', now()), '1 day') AS d(day)
-       LEFT JOIN analytics a ON date_trunc('day', a.collected_at) = d.day
-       LEFT JOIN social_posts sp ON sp.id = a.social_post_id
-       LEFT JOIN videos v ON v.id = sp.video_id
-       LEFT JOIN projects p ON p.id = v.project_id AND p.user_id = $1
+       LEFT JOIN mine m ON date_trunc('day', m.collected_at) = d.day
        GROUP BY d.day
        ORDER BY d.day`,
       [req.user!.id, String(days)],
@@ -123,6 +128,10 @@ analyticsRouter.get(
       `WITH latest AS (
          SELECT DISTINCT ON (a.social_post_id) a.*
          FROM analytics a
+         JOIN social_posts sp ON sp.id = a.social_post_id
+         JOIN videos v ON v.id = sp.video_id
+         JOIN projects p ON p.id = v.project_id
+         WHERE p.user_id = $1
          ORDER BY a.social_post_id, a.collected_at DESC
        )
        SELECT sp.id AS post_id, v.id AS video_id, v.title, sp.platform,

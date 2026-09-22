@@ -11,6 +11,7 @@ import { config } from '../config/index.js';
 import { query, queryMany, queryOne } from '../db/pool.js';
 import { jobQueue } from '../queue/index.js';
 import { events } from '../utils/events.js';
+import { ownerOfVideo } from './ownership.js';
 import { writeLog } from './log-store.js';
 import { parseProjectSettings, type MediaRow, type ProjectRow, type VideoJobRow, type VideoRow } from './types.js';
 
@@ -70,15 +71,19 @@ async function sceneMedia(videoId: string): Promise<MediaRow[]> {
   );
 }
 
+export function hasAudioSource(project: ProjectRow, video: VideoRow): boolean {
+  const settings = parseProjectSettings(project.settings);
+  return settings.voiceEnabled || Boolean(video.audio_media_id);
+}
+
 export function plannedStages(project: ProjectRow, video: VideoRow, hasScript: boolean): StageName[] {
   const settings = parseProjectSettings(project.settings);
   const stages: StageName[] = [];
   if (!hasScript) stages.push('script');
   stages.push('video');
   if (settings.voiceEnabled) stages.push('voice');
-  if (settings.subtitlesEnabled) stages.push('subtitle');
+  if (settings.subtitlesEnabled && hasAudioSource(project, video)) stages.push('subtitle');
   stages.push('ffmpeg');
-  void video;
   return stages;
 }
 
@@ -91,10 +96,6 @@ async function stageJobs(videoId: string, stage: StageName): Promise<VideoJobRow
     `SELECT * FROM video_jobs WHERE video_id = $1 AND type = $2 ORDER BY step_index, created_at`,
     [videoId, stage],
   );
-}
-
-function allDone(jobs: VideoJobRow[]): boolean {
-  return jobs.length > 0 && jobs.every((job) => job.status === 'COMPLETED');
 }
 
 function anyFailed(jobs: VideoJobRow[]): boolean {
@@ -116,7 +117,7 @@ export async function nextStage(video: VideoRow, project: ProjectRow): Promise<S
   if (scenes.length < expectedScenes) return 'video';
 
   if (settings.voiceEnabled && !video.audio_media_id) return 'voice';
-  if (settings.subtitlesEnabled && !video.subtitle_media_id) return 'subtitle';
+  if (settings.subtitlesEnabled && video.audio_media_id && !video.subtitle_media_id) return 'subtitle';
   if (!video.final_media_id) return 'ffmpeg';
   return null;
 }
@@ -164,14 +165,17 @@ async function insertJob(params: {
   await query('UPDATE video_jobs SET queue_job_id = $1 WHERE id = $2', [queued.id, row.id]);
   row.queue_job_id = queued.id;
 
-  events.publish({
-    type: 'job.updated',
-    jobId: row.id,
-    videoId: params.videoId,
-    status: 'PENDING',
-    progress: 0,
-    queue: params.queue,
-  });
+  events.publish(
+    {
+      type: 'job.updated',
+      jobId: row.id,
+      videoId: params.videoId,
+      status: 'PENDING',
+      progress: 0,
+      queue: params.queue,
+    },
+    await ownerOfVideo(params.videoId),
+  );
 
   return row;
 }
@@ -327,9 +331,16 @@ export async function enqueueStage(video: VideoRow, project: ProjectRow, stage: 
       const audio = video.audio_media_id
         ? await queryOne<MediaRow>('SELECT * FROM media WHERE id = $1', [video.audio_media_id])
         : null;
-      const scenes = await sceneMedia(video.id);
-      const sourcePath = audio?.path ?? scenes[0]?.path;
-      if (!sourcePath) return [];
+      const sourcePath = audio?.path;
+      if (!sourcePath) {
+        await writeLog(
+          'info',
+          'pipeline',
+          'Untertitel uebersprungen: das Video hat keine Tonspur',
+          { videoId: video.id, hint: 'Sprachausgabe im Projekt aktivieren oder eine Audiodatei hinterlegen' },
+        );
+        return [];
+      }
 
       const script = await loadScript(video.script_id);
       const job = await insertJob({
@@ -422,7 +433,10 @@ export async function setVideoStatus(
   await query(`UPDATE videos SET ${fields.join(', ')} WHERE id = $1`, params);
 
   const row = await queryOne<{ progress: number }>('SELECT progress FROM videos WHERE id = $1', [videoId]);
-  events.publish({ type: 'video.updated', videoId, status, progress: row?.progress ?? 0 });
+  events.publish(
+    { type: 'video.updated', videoId, status, progress: row?.progress ?? 0 },
+    await ownerOfVideo(videoId),
+  );
 }
 
 export async function recomputeVideoProgress(videoId: string): Promise<number> {
@@ -506,25 +520,40 @@ export async function advancePipeline(videoId: string): Promise<void> {
 }
 
 async function finishPipeline(video: VideoRow, project: ProjectRow): Promise<void> {
-  const requiresApproval = video.require_approval || project.require_approval;
+  const current = (await loadVideo(video.id)) ?? video;
+
+  if (!current.final_media_id) {
+    const reason =
+      'Die Pipeline hat keine fertige Videodatei erzeugt. Pruefe die Jobs des letzten Schritts im Bereich Warteschlange.';
+    await setVideoStatus(current.id, 'FAILED', { error: reason });
+    await writeLog('error', 'pipeline', `Pipeline ohne Ergebnis beendet: ${current.title}`, {
+      videoId: current.id,
+    });
+    return;
+  }
+
+  const requiresApproval = current.require_approval || project.require_approval;
   const status = requiresApproval ? 'REVIEW_REQUIRED' : 'APPROVED';
 
   await query(
     `UPDATE videos SET status = $2, progress = 100, generated_at = COALESCE(generated_at, now()), error = NULL
      WHERE id = $1`,
-    [video.id, status],
+    [current.id, status],
   );
 
-  events.publish({ type: 'video.updated', videoId: video.id, status, progress: 100 });
-  await writeLog('info', 'pipeline', `Video fertiggestellt: ${video.title}`, {
-    videoId: video.id,
+  events.publish(
+    { type: 'video.updated', videoId: current.id, status, progress: 100 },
+    await ownerOfVideo(current.id),
+  );
+  await writeLog('info', 'pipeline', `Video fertiggestellt: ${current.title}`, {
+    videoId: current.id,
     status,
     requiresApproval,
   });
 
   if (!requiresApproval) {
     const { schedulePendingPosts } = await import('./publisher.js');
-    await schedulePendingPosts(video.id);
+    await schedulePendingPosts(current.id);
   }
 }
 

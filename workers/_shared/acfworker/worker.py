@@ -246,8 +246,16 @@ def run_worker(
         progress_holder = {"value": 0.0}
         job_stop = threading.Event()
 
+        lock_deadline = time.time() + config.job_timeout_sec
+
         def lock_loop() -> None:
             while not job_stop.is_set():
+                if time.time() >= lock_deadline:
+                    logger.error(
+                        "Zeitueberschreitung: Sperre wird nicht mehr verlaengert, der Job wird wiederhergestellt",
+                        extra={"extra": {"jobId": job.id, "timeoutSec": config.job_timeout_sec}},
+                    )
+                    return
                 try:
                     job_queue.heartbeat(job.id, config.worker_id, config.lock_ttl_sec, int(progress_holder["value"]))
                 except Exception:  # noqa: BLE001
@@ -278,36 +286,71 @@ def run_worker(
         timer.daemon = True
         timer.start()
 
+        settled = {"done": False}
+
+        def report_safely(what: str, action) -> None:
+            try:
+                action()
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Ergebnis konnte nicht an das Backend gemeldet werden",
+                    extra={"extra": {"jobId": job.id, "report": what, "error": str(exc)}},
+                )
+
         try:
             if job.ref_id:
-                api.report_started(job.ref_id, {"worker": config.worker_name, "attempt": job.attempts})
+                report_safely(
+                    "started",
+                    lambda: api.report_started(job.ref_id, {"worker": config.worker_name, "attempt": job.attempts}),
+                )
             logger.info("Job gestartet", extra={"extra": {"jobId": job.id, "name": job.name}})
 
             result = handler(context) or {}
 
             job_queue.complete(queue, job.id)
+            settled["done"] = True
             if job.ref_id:
-                api.report_completed(job.ref_id, result)
+                report_safely("completed", lambda: api.report_completed(job.ref_id, result))
             state["processed"] += 1
             state["status"] = "idle"
             state["reason"] = startup_error
             logger.info("Job abgeschlossen", extra={"extra": {"jobId": job.id}})
 
         except WaitingForGpu as exc:
+            if settled["done"]:
+                logger.error(
+                    "Fehler nach erfolgreichem Abschluss: der Job wird nicht erneut eingereiht",
+                    extra={"extra": {"jobId": job.id, "error": str(exc)}},
+                )
+                timer.cancel()
+                job_stop.set()
+                state["current_job"] = None
+                continue
             job_queue.park(queue, job.id, "WAITING_FOR_GPU", str(exc), exc.retry_in_ms)
+            settled["done"] = True
             if job.ref_id:
-                api.report_status(job.ref_id, "WAITING_FOR_GPU", str(exc))
+                report_safely("status", lambda: api.report_status(job.ref_id, "WAITING_FOR_GPU", str(exc)))
             state["status"] = "degraded"
             state["reason"] = str(exc)
             logger.warning("Job wartet auf GPU", extra={"extra": {"jobId": job.id, "reason": str(exc)}})
 
         except Exception as exc:  # noqa: BLE001
+            if settled["done"]:
+                logger.error(
+                    "Fehler nach erfolgreichem Abschluss: der Job wird nicht erneut eingereiht",
+                    extra={"extra": {"jobId": job.id, "error": str(exc)}},
+                )
+                timer.cancel()
+                job_stop.set()
+                state["current_job"] = None
+                continue
             permanent = isinstance(exc, PermanentJobError)
             message = "Zeitueberschreitung" if cancelled.is_set() and time.time() >= deadline else str(exc)
             backoff = min(600000, 30000 * 2 ** max(0, job.attempts - 1))
             outcome = job_queue.fail(queue, job.id, message, backoff, permanent)
+            settled["done"] = True
             if job.ref_id:
-                api.report_failed(job.ref_id, message, outcome == "RETRY")
+                report_safely("failed", lambda: api.report_failed(job.ref_id, message, outcome == "RETRY"))
             state["failed"] += 1
             state["status"] = "idle"
             logger.error("Job fehlgeschlagen", exc_info=True, extra={"extra": {"jobId": job.id, "willRetry": outcome == "RETRY"}})

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PageHeader, PlatformChip, PostStatusBadge } from '@/components/common';
+import { PageHeader, PostStatusBadge } from '@/components/common';
 import { Button, Card, Skeleton } from '@/components/ui';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiError } from '@/lib/api';

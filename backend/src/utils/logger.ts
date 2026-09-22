@@ -1,6 +1,7 @@
 import { pino, stdTimeFunctions } from 'pino';
 
 export const logger = pino({
+  enabled: process.env.LOG_SILENT !== 'true',
   level: process.env.LOG_LEVEL ?? 'info',
   base: { service: 'backend' },
   timestamp: stdTimeFunctions.isoTime,

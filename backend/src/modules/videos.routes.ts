@@ -302,7 +302,11 @@ videosRouter.post(
     if (!video) throw new Error('Video konnte nicht angelegt werden');
 
     if (body.ideaId) {
-      await query(`UPDATE ideas SET status = 'used' WHERE id = $1`, [body.ideaId]);
+      await query(`UPDATE ideas SET status = 'used' WHERE id = $1 AND user_id = $2 AND project_id = $3`, [
+        body.ideaId,
+        req.user!.id,
+        project.id,
+      ]);
     }
 
     await audit('video.created', contextFromRequest(req), 'video', video.id, { title: video.title });
@@ -383,8 +387,14 @@ videosRouter.post(
     await transaction(async (client) => {
       await client.query(
         `UPDATE videos SET source_media_id = NULL, audio_media_id = NULL, subtitle_media_id = NULL,
-                           final_media_id = NULL, thumbnail_media_id = NULL, progress = 0, error = NULL
+                           final_media_id = NULL, thumbnail_media_id = NULL, progress = 0, error = NULL,
+                           status = 'DRAFT', approved_at = NULL, approved_by = NULL, published_at = NULL
          WHERE id = $1`,
+        [video.id],
+      );
+      await client.query(
+        `UPDATE social_posts SET status = 'draft', scheduled_at = NULL, media_id = NULL
+         WHERE video_id = $1 AND status IN ('scheduled', 'queued', 'failed')`,
         [video.id],
       );
       await client.query(`DELETE FROM media WHERE video_id = $1 AND kind <> 'script'`, [video.id]);
@@ -451,11 +461,15 @@ videosRouter.put(
 
     for (const target of body.targets) {
       if (!target.enabled) {
-        await query(`UPDATE social_posts SET status = 'cancelled' WHERE video_id = $1 AND platform = $2`, [
-          video.id,
-          target.platform,
-        ]);
-        results.push({ platform: target.platform, status: 'disabled' });
+        const result = await query(
+          `UPDATE social_posts SET status = 'cancelled'
+           WHERE video_id = $1 AND platform = $2 AND status <> 'published'`,
+          [video.id, target.platform],
+        );
+        results.push({
+          platform: target.platform,
+          status: result.rowCount ? 'disabled' : 'already_published',
+        });
         continue;
       }
 
@@ -586,8 +600,13 @@ videosRouter.post(
   '/:id/posts/:postId/cancel',
   requireEditor,
   asyncHandler(async (req, res) => {
-    await loadVideoOwned(req.params.id!, req.user!.id);
-    await cancelPost(req.params.postId!);
+    const { video } = await loadVideoOwned(req.params.id!, req.user!.id);
+    const post = await queryOne<{ id: string }>('SELECT id FROM social_posts WHERE id = $1 AND video_id = $2', [
+      req.params.postId!,
+      video.id,
+    ]);
+    if (!post) throw new NotFoundError('Veroeffentlichung');
+    await cancelPost(post.id);
     await audit('post.cancelled', contextFromRequest(req), 'social_post', req.params.postId!);
     res.json({ ok: true });
   }),

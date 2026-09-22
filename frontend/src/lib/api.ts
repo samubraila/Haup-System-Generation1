@@ -15,6 +15,8 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
+const SKIP_REFRESH = ['/api/auth/login', '/api/auth/refresh', '/api/auth/logout'];
+
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshSession(): Promise<boolean> {
@@ -66,7 +68,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     credentials: 'same-origin',
   });
 
-  if (response.status === 401 && retryOnUnauthorized && !path.startsWith('/api/auth/')) {
+  if (response.status === 401 && retryOnUnauthorized && !SKIP_REFRESH.some((entry) => path.startsWith(entry))) {
     const refreshed = await refreshSession();
     if (refreshed) {
       return apiFetch<T>(path, { ...options, retryOnUnauthorized: false });

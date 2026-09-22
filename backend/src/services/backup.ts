@@ -48,30 +48,29 @@ export async function listBackups(): Promise<BackupEntry[]> {
 }
 
 async function dumpDatabase(target: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn('pg_dump', ['--no-owner', '--no-privileges', '--format=plain', config.DATABASE_URL], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  const child = spawn('pg_dump', ['--no-owner', '--no-privileges', '--format=plain', config.DATABASE_URL], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 
-    let stderr = '';
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.on('error', (err) =>
+  let stderr = '';
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+    if (stderr.length > 20_000) stderr = stderr.slice(-10_000);
+  });
+
+  const exited = new Promise<number>((resolve, reject) => {
+    child.once('error', (err) =>
       reject(new Error(`pg_dump konnte nicht gestartet werden: ${err.message}. Ist postgresql-client installiert?`)),
     );
-
-    const gzip = createGzip();
-    const out = createWriteStream(target);
-    pipeline(child.stdout, gzip, out)
-      .then(() => {
-        child.on('close', (code) => {
-          if (code === 0) resolve();
-          else reject(new Error(`pg_dump beendet mit Code ${code}: ${stderr.slice(0, 500)}`));
-        });
-      })
-      .catch(reject);
+    child.once('close', (code) => resolve(code ?? -1));
   });
+
+  const written = pipeline(child.stdout, createGzip(), createWriteStream(target));
+
+  const [, code] = await Promise.all([written, exited]);
+  if (code !== 0) {
+    throw new Error(`pg_dump beendet mit Code ${code}: ${stderr.slice(0, 500)}`);
+  }
 }
 
 async function archiveMetadata(target: string, includeMedia: boolean): Promise<void> {

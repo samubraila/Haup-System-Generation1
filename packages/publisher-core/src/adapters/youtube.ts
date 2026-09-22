@@ -77,6 +77,7 @@ async function uploadChunks(
   ctx: AdapterContext,
 ): Promise<Record<string, unknown>> {
   let offset = 0;
+  let stalledRounds = 0;
 
   while (offset < fileSize) {
     const end = Math.min(offset + CHUNK_BYTES, fileSize) - 1;
@@ -94,8 +95,24 @@ async function uploadChunks(
 
     if (response.status === 308) {
       const range = response.headers.get('range');
-      const uploaded = range ? Number.parseInt(range.split('-')[1] ?? String(end), 10) + 1 : end + 1;
-      offset = uploaded;
+      if (!range) {
+        stalledRounds += 1;
+        if (stalledRounds > 3) {
+          throw new Error('YouTube bestaetigt den hochgeladenen Bereich nicht, der Upload wird abgebrochen');
+        }
+        ctx.log('YouTube hat keinen Bereich bestaetigt, der Block wird erneut gesendet', { offset });
+        continue;
+      }
+
+      const confirmed = Number.parseInt(range.split('-')[1] ?? '', 10);
+      if (!Number.isFinite(confirmed)) {
+        stalledRounds += 1;
+        if (stalledRounds > 3) throw new Error(`YouTube meldete einen unlesbaren Bereich: ${range}`);
+        continue;
+      }
+
+      stalledRounds = 0;
+      offset = confirmed + 1;
       await ctx.reportProgress(Math.min(95, (offset / fileSize) * 90 + 5), 'Upload laeuft');
       continue;
     }

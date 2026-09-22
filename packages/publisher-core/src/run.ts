@@ -74,25 +74,42 @@ async function collectAnalytics(
 
   const snapshot = await adapter.fetchAnalytics(payload.externalPostId, adapterCtx);
 
-  await fetch(`${ctx.config.backendUrl}/api/internal/analytics`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': ctx.config.internalApiKey,
-      'x-worker-id': ctx.config.workerId,
-    },
-    body: JSON.stringify({
-      postId: payload.postId,
-      platform: adapter.platform,
-      views: snapshot.views,
-      likes: snapshot.likes,
-      comments: snapshot.comments,
-      shares: snapshot.shares,
-      followersGained: snapshot.followersGained,
-      watchTimeSec: snapshot.watchTimeSec,
-      raw: snapshot.raw,
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  const onAbort = () => controller.abort();
+  ctx.signal.addEventListener('abort', onAbort);
+
+  let response: Response;
+  try {
+    response = await fetch(`${ctx.config.backendUrl}/api/internal/analytics`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': ctx.config.internalApiKey,
+        'x-worker-id': ctx.config.workerId,
+      },
+      body: JSON.stringify({
+        postId: payload.postId,
+        platform: adapter.platform,
+        views: snapshot.views,
+        likes: snapshot.likes,
+        comments: snapshot.comments,
+        shares: snapshot.shares,
+        followersGained: snapshot.followersGained,
+        watchTimeSec: snapshot.watchTimeSec,
+        raw: snapshot.raw,
+      }),
+    });
+  } finally {
+    clearTimeout(timer);
+    ctx.signal.removeEventListener('abort', onAbort);
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Kennzahlen konnten nicht gespeichert werden (${response.status}): ${text.slice(0, 200)}`);
+  }
 
   return { views: snapshot.views, likes: snapshot.likes };
 }

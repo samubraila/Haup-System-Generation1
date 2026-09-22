@@ -76,6 +76,8 @@ local jobKey = ARGV[3] .. jobId
 redis.call('LREM', KEYS[2], 1, jobId)
 redis.call('DEL', ARGV[4] .. jobId)
 if redis.call('EXISTS', jobKey) == 0 then return 'GONE' end
+local status = redis.call('HGET', jobKey, 'status')
+if status == 'CANCELLED' then return 'CANCELLED' end
 local attempts = tonumber(redis.call('HGET', jobKey, 'attempts') or '0')
 local maxAttempts = tonumber(redis.call('HGET', jobKey, 'maxAttempts') or '1')
 local permanent = ARGV[7] == '1'
@@ -102,6 +104,8 @@ local jobKey = ARGV[3] .. jobId
 redis.call('LREM', KEYS[2], 1, jobId)
 redis.call('DEL', ARGV[4] .. jobId)
 if redis.call('EXISTS', jobKey) == 0 then return 'GONE' end
+local status = redis.call('HGET', jobKey, 'status')
+if status == 'CANCELLED' then return 'CANCELLED' end
 redis.call('HINCRBY', jobKey, 'attempts', -1)
 redis.call('HSET', jobKey, 'status', ARGV[6], 'error', ARGV[5], 'updatedAt', ARGV[2], 'lockedBy', '')
 redis.call('ZADD', KEYS[4], tonumber(ARGV[2]) + tonumber(ARGV[7]), jobId)
@@ -314,7 +318,7 @@ export class JobQueue {
     jobId: string,
     error: string,
     opts: { backoffMs?: number; permanent?: boolean } = {},
-  ): Promise<'RETRY' | 'FAILED' | 'GONE'> {
+  ): Promise<'RETRY' | 'FAILED' | 'GONE' | 'CANCELLED'> {
     const result = (await this.script.acfFail!(
       keys.job(jobId),
       keys.active(queue),
@@ -329,7 +333,7 @@ export class JobQueue {
       opts.permanent ? '1' : '0',
       String(TTL_FAILED_SEC),
     )) as string;
-    return result as 'RETRY' | 'FAILED' | 'GONE';
+    return result as 'RETRY' | 'FAILED' | 'GONE' | 'CANCELLED';
   }
 
   /** Job ohne Versuchsverbrauch parken (z.B. WAITING_FOR_GPU). */

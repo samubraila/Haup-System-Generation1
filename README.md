@@ -51,7 +51,7 @@ veröffentlichen — alles auf dem eigenen Rechner, ohne kostenpflichtige Cloud-
 | **Video-KI** | Austauschbare Adapter: **LTX**, **Wan**, **ComfyUI** und ein klar gekennzeichneter Platzhalter zum Testen |
 | **Ohne GPU** | Die Plattform läuft vollständig. Generierungsjobs bleiben im Status `WAITING_FOR_GPU` in der Queue und starten automatisch, sobald eine GPU verfügbar ist |
 | **Schnitt** | FFmpeg-Worker: Szenen zusammenfügen, skalieren, Ton mischen, Untertitel einbrennen, Wasserzeichen, Vorschaubild |
-| **Untertitel** | Spracherkennung mit faster-whisper, SRT und VTT, Stil konfigurierbar (Schrift, Größe, Position, Farbe, Hintergrund) |
+| **Untertitel** | Spracherkennung mit faster-whisper, SRT und VTT, Stil konfigurierbar (Schrift, Größe, Position, Farbe, Hintergrund). Setzt eine Tonspur voraus — ohne Sprachausgabe wird der Schritt übersprungen |
 | **Freigabe** | `GENERATED → REVIEW_REQUIRED → APPROVED → SCHEDULED → PUBLISHED`; ohne Freigabe wird nichts veröffentlicht, auch nicht durch Automatisierung |
 | **Publishing** | Je Plattform ein eigener Worker. Ein Fehler bei TikTok blockiert YouTube und Instagram nicht |
 | **Kalender** | Wochenansicht mit Drag & Drop zum Verschieben geplanter Beiträge |
@@ -405,8 +405,9 @@ Damit klar ist, was implementiert ist und was Einrichtung braucht:
 | Video-Adapter LTX / Wan / ComfyUI | implementiert, **Modelle musst du selbst laden** |
 | Upload zu YouTube, TikTok, Instagram, Facebook | implementiert gegen die offiziellen APIs, **App-Registrierung nötig** |
 | Analytics-Abruf | implementiert; liefert erst Werte, wenn Beiträge veröffentlicht sind und die Plattform Daten freigibt |
-| Sprachausgabe | Worker vorhanden, **Piper-Stimme muss hinterlegt werden**; ohne Stimme lehnt der Worker Aufträge mit klarer Meldung ab |
-| Bildgenerierung | Worker vorhanden, **Modell muss hinterlegt werden** |
+| Untertitel | Worker gebaut und getestet, läuft auf der CPU; **braucht eine Tonspur**, also aktivierte Sprachausgabe oder eine hochgeladene Audiodatei |
+| Sprachausgabe | Worker gebaut und getestet, **Piper-Stimme muss hinterlegt werden**; ohne Stimme lehnt der Worker Aufträge mit klarer Meldung ab |
+| Bildgenerierung | Worker gebaut, **Modell muss hinterlegt werden** |
 | TikTok-Sichtbarkeit | Nicht geprüfte Apps dürfen nur privat posten — eine Vorgabe von TikTok, keine Einschränkung dieser Software |
 
 Es gibt keine simulierten Daten. Wo eine Integration nicht eingerichtet ist,

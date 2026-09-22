@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhaengigkeiten installieren
+        run: npm ci
+
+      - name: Typpruefung
+        run: npm run typecheck
+
+      - name: Bauen
+        run: npm run build
+
+      - name: Tests
+        run: npm test
+
+      - name: Keine Build-Artefakte neben den Quellen
+        run: |
+          leftovers=$(find backend/src frontend/src packages/*/src workers/*/src -name '*.js' -o -name '*.d.ts' 2>/dev/null | head -20)
+          if [ -n "$leftovers" ]; then
+            echo "Kompilierte Dateien liegen neben den Quellen:"
+            echo "$leftovers"
+            exit 1
+          fi
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Syntaxpruefung aller Python-Dateien
+        run: python -m compileall -q workers
+
+      - name: Untertitel-Tests
+        working-directory: workers/subtitle
+        run: python -m unittest discover -s tests -v
+
+      - name: Queue-Protokoll stimmt zwischen TypeScript und Python ueberein
+        run: python scripts/check-queue-parity.py
+
+  compose:
+    name: Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Konfiguration erzeugen
+        run: node scripts/generate-secrets.mjs
+
+      - name: Basis-Stack pruefen
+        run: docker compose config --quiet
+
+      - name: Overlays pruefen
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ai.yml --profile ai config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile ai config --quiet
+
+      - name: Jeder Dienst hat Healthcheck und Ressourcenlimit
+        run: node scripts/check-compose.mjs
+
+  secrets:
+    name: Keine Secrets im Repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: .env darf nicht eingecheckt sein
+        run: |
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo ".env liegt im Repository"
+            exit 1
+          fi
+          echo "ok"
+
+      - name: Keine Platzhalter-Ersetzungen vergessen
+        run: |
+          if grep -rn "CHANGE_ME" --include="*.ts" --include="*.tsx" --include="*.py" --include="*.yml" \
+             --exclude-dir=node_modules . | grep -v ".env.example"; then
+            echo "CHANGE_ME steht ausserhalb von .env.example im Code"
+            exit 1
+          fi
+          echo "ok"

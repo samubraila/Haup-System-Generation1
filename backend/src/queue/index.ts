@@ -22,14 +22,23 @@ export async function queueOverview() {
   return Promise.all(ALL_QUEUES.map((queue) => jobQueue.stats(queue)));
 }
 
-export async function maintainQueues(): Promise<{ promoted: number; reaped: string[] }> {
+export async function maintainQueues(): Promise<{ promoted: number; reaped: string[]; deadLettered: string[] }> {
   let promoted = 0;
   const reaped: string[] = [];
+  const deadLettered: string[] = [];
+
   for (const queue of ALL_QUEUES) {
     promoted += await jobQueue.promoteDelayed(queue);
-    reaped.push(...(await jobQueue.reapStalled(queue)));
+    const recovered = await jobQueue.reapStalled(queue);
+    reaped.push(...recovered);
+
+    for (const queueJobId of recovered) {
+      const job = await jobQueue.getJob(queueJobId);
+      if (job?.status === 'FAILED') deadLettered.push(queueJobId);
+    }
   }
-  return { promoted, reaped };
+
+  return { promoted, reaped, deadLettered };
 }
 
 export async function checkRedis(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {

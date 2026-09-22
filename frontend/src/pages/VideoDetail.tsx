@@ -619,7 +619,8 @@ function PublishDialog({
 
   useEffect(() => {
     if (open) setTargets(buildTargets(video));
-  }, [open, video]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, video.id]);
 
   const save = useMutation({
     mutationFn: () =>

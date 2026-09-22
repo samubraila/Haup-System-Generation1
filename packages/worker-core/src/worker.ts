@@ -163,25 +163,47 @@ export async function runWorker<TData = Record<string, unknown>>(
       },
     };
 
+    let queueSettled = false;
+
+    const report = async (what: string, action: () => Promise<void>): Promise<void> => {
+      try {
+        await action();
+      } catch (err) {
+        jobLogger.error(
+          { err: (err as Error).message, report: what },
+          'Ergebnis konnte nicht an das Backend gemeldet werden',
+        );
+      }
+    };
+
     try {
       if (job.refId) {
-        await api.reportStarted(job.refId, { worker: config.workerName, attempt: job.attempts });
+        await report('started', () => api.reportStarted(job.refId!, { worker: config.workerName, attempt: job.attempts }));
       }
       jobLogger.info({ attempt: job.attempts, maxAttempts: job.maxAttempts }, 'Job gestartet');
 
       const result = await opts.handler(ctx);
 
       await queue.complete(opts.queue, job.id);
-      if (job.refId) await api.reportCompleted(job.refId, result ?? {});
+      queueSettled = true;
+      if (job.refId) await report('completed', () => api.reportCompleted(job.refId!, result ?? {}));
       processed += 1;
       jobLogger.info('Job erfolgreich abgeschlossen');
     } catch (err) {
       const error = err as Error;
 
+      if (queueSettled) {
+        jobLogger.error(
+          { err: error.message },
+          'Fehler nach erfolgreichem Abschluss: der Job wird nicht erneut eingereiht',
+        );
+        return;
+      }
+
       if (error instanceof WaitingForGpuError) {
-        // Kein Fehler: der Job wartet auf Hardware und bleibt in der Queue.
         await queue.park(opts.queue, job.id, 'WAITING_FOR_GPU', error.message, error.retryInMs);
-        if (job.refId) await api.reportStatus(job.refId, 'WAITING_FOR_GPU', error.message);
+        queueSettled = true;
+        if (job.refId) await report('status', () => api.reportStatus(job.refId!, 'WAITING_FOR_GPU', error.message));
         registry.setStatus('degraded', error.message);
         jobLogger.warn({ retryInMs: error.retryInMs }, 'Job wartet auf GPU');
         return;
@@ -193,8 +215,9 @@ export async function runWorker<TData = Record<string, unknown>>(
       const backoffMs = Math.min(10 * 60_000, 30_000 * 2 ** Math.max(0, job.attempts - 1));
 
       const outcome = await queue.fail(opts.queue, job.id, message, { backoffMs, permanent });
+      queueSettled = true;
       const willRetry = outcome === 'RETRY';
-      if (job.refId) await api.reportFailed(job.refId, message, willRetry);
+      if (job.refId) await report('failed', () => api.reportFailed(job.refId!, message, willRetry));
       failed += 1;
       jobLogger.error({ err: message, willRetry, permanent }, 'Job fehlgeschlagen');
     } finally {
@@ -216,7 +239,9 @@ export async function runWorker<TData = Record<string, unknown>>(
       const job = (await queue.reserve(opts.queue, config.workerId, config.lockTtlSec)) as JobRecord<TData> | null;
       lastPollOk = Date.now();
       if (!job) return;
-      const promise = runJob(job).finally(() => inFlight.delete(promise));
+      const promise = runJob(job)
+        .catch((err) => logger.error({ err: (err as Error).message, jobId: job.id }, 'Job-Ausfuehrung abgebrochen'))
+        .finally(() => inFlight.delete(promise));
       inFlight.add(promise);
     }
   }
@@ -265,6 +290,10 @@ export async function runWorker<TData = Record<string, unknown>>(
       void stop().then(() => process.exit(0));
     });
   }
+
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ reason: String(reason) }, 'Unbehandelte Promise-Ablehnung im Worker');
+  });
 
   return { stop };
 }

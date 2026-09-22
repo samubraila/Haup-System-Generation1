@@ -96,7 +96,7 @@ export async function renderTarget(
   let audioLabel: string;
   if (voiceIndex >= 0 && musicIndex >= 0) {
     filters.push(`[${musicIndex}:a]volume=${inputs.musicVolume.toFixed(2)},aloop=loop=-1:size=2e9[music]`);
-    filters.push(`[${voiceIndex}:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]`);
+    filters.push(`[${voiceIndex}:a][music]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]`);
     audioLabel = '[aout]';
   } else if (voiceIndex >= 0) {
     filters.push(`[${voiceIndex}:a]aresample=44100[aout]`);

@@ -1,4 +1,4 @@
-import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import type { NextFunction, Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { queryOne } from '../db/pool.js';
@@ -60,7 +60,7 @@ function extractToken(req: Request): string | null {
  * Prueft die Anmeldung. Der Token wird bei jedem Aufruf gegen die Datenbank
  * gehalten, damit deaktivierte Konten sofort wirken und nicht erst nach Ablauf.
  */
-export const requireAuth: RequestHandler = (req, res, next) => {
+export const requireAuth: RequestHandler = (req, _res, next) => {
   const token = extractToken(req);
   if (!token) {
     next(new UnauthorizedError());
@@ -93,7 +93,7 @@ export const requireAuth: RequestHandler = (req, res, next) => {
 
 /** Erlaubt den Zugriff nur bestimmten Rollen. */
 export function requireRole(...roles: Role[]): RequestHandler {
-  return (req: Request, _res: Response, next: NextFunction) => {
+  return (req: Request, _res: unknown, next: NextFunction) => {
     if (!req.user) {
       next(new UnauthorizedError());
       return;
